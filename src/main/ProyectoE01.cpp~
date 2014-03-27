@@ -1,0 +1,315 @@
+/*
+ * Title: Window Click Example
+ * Class: Vision para Robot
+ * Instructor: Dr. Jose Luis Gordillo (http://robvis.mty.itesm.mx/~gordillo/)
+ * Code: Manlio Barajas (manlito@gmail.com)
+ * Institution: Tec de Monterrey, Campus Monterrey
+ * Date: January 28, 2013
+ *
+ * Description: Shows the most basic interaction with OpenCV HighGui window.
+ *
+ * This programs uses OpenCV http://www.opencv.org/
+ */
+
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <iostream>
+
+using namespace cv;
+using namespace std;
+
+// Here we will store points
+vector<Point> points;
+
+/* Create images where captured and transformed frames are going to be stored */
+Mat currentImage;
+Mat storedImage, storedImageWithPoints;
+
+
+/* This is the callback that will only display mouse coordinates */
+void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param);
+void flipImageEfficient(const Mat &sourceImage, Mat &destinationImage);
+void generateBlackWhite(const Mat &origin, const char* window, Mat &destination);
+void generateBinary(const Mat &origin, float limit, const char* window, Mat &destination); //limit va de 0 a 1.0
+void generateYIQ(const Mat &origin,const char* window, Mat &destination); 
+void generateHSV(const Mat &origin,const char* window, Mat &destination);
+int main(int argc, char *argv[])
+{
+	/* First, open camera device */
+	VideoCapture camera;
+    camera.open(0);
+
+	
+    /* Create main OpenCV window to attach callbacks */
+    namedWindow("Video");
+    namedWindow("Image");
+    setMouseCallback("Image", mouseCoordinatesExampleCallback);
+
+    unsigned char key = 0;
+
+    while (key != 27)
+	{
+        /* Obtain a new frame from camera */
+		camera >> currentImage;
+        if (key == 'c') { //snapshot
+            storedImage.release();
+            points.clear(); //remove all stored points on the vector
+            storedImage = currentImage.clone();
+        }
+
+
+		if (currentImage.data) 
+		{
+            /* Show image */
+            imshow("Video", currentImage);
+
+		}
+		else
+		{
+			cout << "No image data.. " << endl;
+		}
+
+
+        if (storedImage.data) {
+            /* Draw all points */
+            storedImageWithPoints.release();
+            storedImageWithPoints = storedImage.clone();
+            for (unsigned int i = 0; i < points.size(); ++i) {
+                
+                if (i > 0) {
+                    line(storedImageWithPoints, (Point)points[i-1], (Point)points[i], Scalar( 255, 0, 0 ));
+                    circle(storedImageWithPoints, (Point)points[i-1], 3, Scalar( 0, 255, 0 ), CV_FILLED);
+                }
+
+                                                                //B, G, R
+                circle(storedImageWithPoints, (Point)points[i], 3, Scalar( 0, 128, 255 ), CV_FILLED);
+
+            }
+
+            imshow("Image", storedImageWithPoints);
+        }
+
+    /*
+        Generate all processing
+    */
+        if (key == 'j') { //enter
+ 	    storedImage = currentImage.clone();
+            Mat blackAndWhiteImage;
+            generateBlackWhite(storedImage, "B&W", blackAndWhiteImage);
+
+            Mat binaryImage;
+            generateBinary(blackAndWhiteImage, 0.5, "Binary", binaryImage);
+
+    	    Mat YIQImage;
+	    generateYIQ(storedImage,"YIQ",YIQImage);
+	    
+	    /*Mat HSVImage;
+	    cvtColor(storedImage,HSVImage,  CV_RGB2HSV , 0);
+	    namedWindow("HSV");
+	    imshow("HSV", HSVImage);	    */
+	    
+
+	    Mat HSVImage;
+	    generateHSV(storedImage,"HSV",HSVImage);
+
+	   
+        }
+
+        key = waitKey(5);
+	}
+}
+
+
+void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param)
+{
+    switch (event)
+    {
+        case CV_EVENT_LBUTTONDOWN:
+            cout << "  Mouse X, Y: " << x << ", " << y << 
+                " color: R " << (int)storedImage.at<Vec3b>(y, x)[2] <<
+                " G " << (int)storedImage.at<Vec3b>(y, x)[1] <<
+                " B " << (int)storedImage.at<Vec3b>(y, x)[0];
+            cout << endl;
+
+            /*  Draw a point */
+            points.push_back(Point(x, y));
+            break;
+        case CV_EVENT_MOUSEMOVE:
+            break;
+        case CV_EVENT_LBUTTONUP:
+            break;
+    }
+}
+
+void flipImageEfficient(const Mat &sourceImage, Mat &destinationImage)
+{
+    if (destinationImage.empty())
+        destinationImage = Mat(sourceImage.rows, sourceImage.cols, sourceImage.type());
+
+    int channels = sourceImage.channels();
+    
+    for (int y = 0; y < sourceImage.rows; ++y) 
+    {
+        uchar* sourceRowPointer = (uchar*) sourceImage.ptr<uchar>(y);
+        uchar* destinationRowPointer = (uchar*) destinationImage.ptr<uchar>(y);
+        for (int x = 0; x < sourceImage.cols / 2; ++x)
+            for (int i = 0; i < channels; ++i)
+            {
+                destinationRowPointer[x * channels + i] = sourceRowPointer[(sourceImage.cols - 1 - x ) * channels + i];
+                destinationRowPointer[(sourceImage.cols - 1 - x) * channels + i] = sourceRowPointer[x * channels + i];
+            }
+    }
+}
+
+void generateBlackWhite(const Mat &origin, const char* window, Mat &destination) {
+    int average;
+
+    if (destination.empty())
+        destination = Mat(origin.rows, origin.cols, origin.type());
+
+    int channels = origin.channels();
+    
+    for (int y = 0; y < origin.rows; ++y) 
+    {
+        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
+        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
+        for (int x = 0; x < origin.cols; ++x) {
+            average = ( sourceRowPointer[x * channels] + sourceRowPointer[x * channels + 1] + sourceRowPointer[x * channels + 2] ) / 3;
+            destinationRowPointer[x * channels    ] = (unsigned char)average;
+            destinationRowPointer[x * channels + 1] = (unsigned char)average;
+            destinationRowPointer[x * channels + 2] = (unsigned char)average;
+        }
+    }
+
+    namedWindow(window);
+    imshow(window, destination);
+
+}
+
+void generateBinary(const Mat &origin, float limit, const char* window, Mat &destination) {
+    unsigned char limit255 = 255 * limit;
+
+    if (limit > 1) limit = 1;
+
+    if (destination.empty())
+        destination = Mat(origin.rows, origin.cols, origin.type());
+
+    int channels = origin.channels();
+    
+    for (int y = 0; y < origin.rows; ++y) 
+    {
+        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
+        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
+        for (int x = 0; x < origin.cols; ++x) {
+            for (int i = 0; i < channels; ++i) {
+                if (sourceRowPointer[x * channels + i] < limit255 )
+                    destinationRowPointer[x * channels + i] = 0;
+                else
+                    destinationRowPointer[x * channels + i] = 255;
+            }
+        }
+    }
+
+    namedWindow(window);
+    imshow(window, destination);
+}
+
+void generateYIQ(const Mat &origin,const char* window, Mat &destination)   
+{
+
+    int blue, red, green;
+    float yq, iq, qq;
+    if (destination.empty())
+        destination= Mat(origin.rows, origin.cols, origin.type());
+
+    int channels = origin.channels();
+    
+    for (int y = 0; y < origin.rows; ++y) 
+    {
+        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
+        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
+        for (int x = 0; x < origin.cols; ++x)
+        {
+            blue= sourceRowPointer[x * channels];
+            green = sourceRowPointer[x * channels + 1];
+            red = sourceRowPointer[x * channels + 2];
+			
+            yq = 0.299*red + 0.587*green + 0.114*blue;
+            iq = 0.596*red - 0.275*green - 0.321*blue;
+            qq = 0.212*red - 0.523*green + 0.311*blue; 
+
+            destinationRowPointer[x * channels] = yq;
+            destinationRowPointer[x * channels + 1] = iq;
+            destinationRowPointer[x * channels + 2] = qq;
+        }
+    }
+
+
+namedWindow(window);
+imshow(window, destination);
+}
+
+void generateHSV(const Mat &origin,const char* window, Mat &destination)
+{
+ int blue, red, green;
+ float hv, sv, vv;
+  float min, max, delta;
+    if (destination.empty())
+        destination= Mat(origin.rows, origin.cols, origin.type());
+
+ int channels = origin.channels();
+
+ 		for (int y = 0; y < origin.rows; ++y) 
+	    {
+		uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
+		uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
+		for (int x = 0; x < origin.cols; ++x)
+		{
+		blue= sourceRowPointer[x * channels];
+		green = sourceRowPointer[x * channels + 1];
+		red = sourceRowPointer[x * channels + 2];
+
+	
+		    min = MIN(red,MIN(green,blue));
+		    max = MAX(red,MAX(green,blue));
+		    vv=max; //Es V
+
+		delta = max - min;
+		if( max != 0 )
+			sv = delta / max;       // s
+		    else {
+			// r = g = b = 0        // si s=0 entonces v es indefinido
+			sv = 0;
+			hv = -1;
+			return;
+            		}
+		if(red == max)
+			hv = ( green - blue ) / delta;     // between yellow & magenta
+		else if( green == max )
+		        hv = 2 +( blue - red ) / delta; // between cyan & yellow
+		else
+		        hv = 4 +( red - green ) / delta; // between magenta & cyan
+		hv *= 60;				// degrees
+		if(hv < 0)
+		hv += 360;
+ 	    destinationRowPointer[x * channels] = hv;
+            destinationRowPointer[x * channels + 1] = sv;
+            destinationRowPointer[x * channels + 2] = vv;
+
+		}
+	}
+namedWindow(window);
+imshow(window, destination);
+}
+
+
+
+
+
+
+
+
+
+
+

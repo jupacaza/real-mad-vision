@@ -14,7 +14,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <time.h>
 #include <iostream>
-
+#include <math.h>
 #include <queue>
 #include "CHeli.h"
 
@@ -450,6 +450,14 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
     long m20[maxAreas];
     long m02[maxAreas];
     long m11[maxAreas];
+    double u11[maxAreas];
+    double u20[maxAreas];
+    double u02[maxAreas];
+    double angle[maxAreas];
+    double xtest[maxAreas];
+    double ytest[maxAreas];
+    Point centroid[maxAreas];
+
 
     if (colorDst.empty())
         colorDst = Mat(dst.rows, dst.cols,  CV_8UC3);
@@ -577,8 +585,17 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 
         }
     }
-    
+        
     for (int i=0;i<colorIndex;i++) {
+        xtest[i]=(double) m10[i]/m00[i];
+        ytest[i]=(double) m01[i]/m00[i];
+        u20[i]=m20[i]-m10[i]*xtest[i];
+        u02[i]=m02[i]-m01[i]*ytest[i];
+        u11[i]=m11[i]-m00[i]*xtest[i]*ytest[i];
+        angle[i]=(1.0/2.0)*(atan2(2*u11[i], u20[i]-u02[i]));
+
+        centroid[i]=Point(xtest[i], ytest[i]);
+
         cout<<"Region"<< i+1 << "\tValor:"<<endl;
         cout << "m00" << "\t" << m00[i] << endl;
         cout << "m10" << "\t" << m10[i] << endl;
@@ -586,8 +603,16 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         cout << "m20" << "\t" << m20[i] << endl;
         cout << "m02" << "\t" << m02[i] << endl;
         cout << "m11" << "\t" << m11[i] << endl;
+        cout<< "xtest" << "\t" << xtest[i] << endl;
+        cout<< "ytest" << "\t" << ytest[i] << endl;
+        cout << "u20" << "\t" << u20[i] << endl;
+        cout << "u02" << "\t" << u02[i] << endl;
+        cout << "u11" << "\t" << u11[i] << endl;
+        cout << "angle" << "\t" << angle[i] << endl;
+
         cout << endl;
-    }
+        }
+
 } //End Oil Drop
 
 void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage, int type)
