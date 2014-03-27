@@ -12,7 +12,7 @@ COPY_ETC_CMD=../etc/copy.sh
 COPY_ETC_SRC=../etc
 COPY_ETC_DST=../bin
 
-Algoritmo: all obj
+ProyectoE01: all obj
 	$(CXX) $(CXXDEFINE) -o ../bin/$@  $(OBJS)  $(CXXFLAGS) $(LXXLIBS) 
 
 
