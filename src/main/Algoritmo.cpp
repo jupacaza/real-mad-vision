@@ -4,8 +4,8 @@
  * Instructor: Dr. Jose Luis Gordillo (http://robvis.mty.itesm.mx/~gordillo/)
  * Code: 
  * Institution: Tec de Monterrey, Campus Monterrey
- * Date: 12 February 2013
- * Description: Demonstration of first phase of the project.
+ * Date: 1.April.2014
+ * Description: Parrot and Segmentation Algorithm.
  * This programs uses OpenCV http://www.opencv.org/
  */
 
@@ -148,7 +148,7 @@ assert((start = clock())!=-1);
 		{
             /* Show image */
             imshow("Video", currentImage);
-            
+            cvMoveWindow("Video", XVIDEO, YIMAGE);
 		}
 		else
 		{
