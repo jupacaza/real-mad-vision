@@ -257,9 +257,9 @@ assert((start = clock())!=-1);
 
         if (key=='s' && closing.rows > 0)
         {
-        Mat oil;
-        OilDrop(closing, oil);
-        imshow("oildrop", oil);
+            Mat oil;
+            OilDrop(closing, oil);
+            imshow("oildrop", oil);
         }
 
 
