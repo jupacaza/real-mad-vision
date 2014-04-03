@@ -1,0 +1,3 @@
+1. Graficar las phis de las 15 muestras tomadas
+2. Guardar en archivo la media de las muestras y la varianza de phi1 y phi2
+3. Trabajar en el algoritmo principal que detecta si se aleja de esa distancia
