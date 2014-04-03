@@ -37,7 +37,7 @@
 #define maxAreas 10
 
 //////////////////// TURN PARROT ON (1) or OFF (0)
-#define PARROT 1
+#define PARROT 0
 
 using namespace cv;
 using namespace std;
@@ -78,8 +78,9 @@ void OilDrop(const Mat &dst, Mat &colorDst);
 
 void generaBinariaDeArchivo (const Mat &origin, Mat &destination);
 void generateHSV(const Mat &origin, Mat &destination);
+void graphPhis (double PhisArray[][2], int savedPhis);
 
-ofstream outFile;
+ofstream outFile, phiListFile;
 ifstream inFile;
 Vec3b maxVec, minVec;
 double phi1[maxAreas], phi2[maxAreas];
@@ -137,7 +138,7 @@ assert((start = clock())!=-1);
     cout << (int)minVec[0] << ' ' << (int)minVec [1] << ' ' << (int)minVec [2] << '\n';
     cout << (int)maxVec[0] << ' ' << (int)maxVec [1] << ' ' << (int)maxVec [2] << '\n';
 
-    int savedPhis = 0;
+    int savedPhis = 0, lastSavedPhis = 0;
     double PhisArray[15][2];
     phi1[0] = -1;
 
@@ -188,7 +189,7 @@ assert((start = clock())!=-1);
         }
 
 
-        if (key == '1' && phi1[0] != -1) { //save phi to array
+        if (key == 's' && phi1[0] != -1) { //save phi to array
             //only saves the phis of the blue area
 
             if (savedPhis < 15) {
@@ -200,32 +201,68 @@ assert((start = clock())!=-1);
                 cout << "Max number of saved Phis (" << savedPhis << ") reached\n";
             }
 
-        } else if (key == '1') {
+        } else if (key == 's') {
             cout << "Phi 1 and 2 not yet captured" << '\n';
         }
 
+        if (key == 'd' && savedPhis > 0) {
+            savedPhis--;
+            cout << "Deleted last pair of Phis\n";
+        } else if (key == 'd') {
+            cout << "No Phis to delete\n";
+        }
 
-        if (key == '2' && savedPhis > 0) { //save phis average to file
-            outFile.open("../src/main/data/phi.txt");
+
+        if (key == '1' && savedPhis > 0) { //save phis to files
+/*
+            char option;
+            cout << "Saving Phi to new file or existing file? (n/e) ";
+            option = getchar();
+
+            if (option == 'n') {
+                outFile.open("../src/main/data/phi.txt");
+                phiListFile.open("../src/main/data/philist.txt");
+            } else {
+ */               outFile.open("../src/main/data/phi.txt", ios::app);
+                phiListFile.open("../src/main/data/philist.txt", ios::app);
+ //           }
 
             double sum1 = 0, sum2 = 0;
             double average1 = 0, average2 = 0;
             for (int i = 0; i < savedPhis; i++) {
                 sum1 += PhisArray[i][0];
                 sum2 += PhisArray[i][1];
+                phiListFile << PhisArray[i][0] << ' ' << PhisArray[i][1] << '\r';
             }
+            phiListFile << '\r';
+            phiListFile.close();
             average1 = sum1 / savedPhis;
             average2 = sum2 / savedPhis;
 
-            // tal vez mostrar una grafica de los Phi capturados?
+            // Variance
+            double variance1 = 0, variance2 = 0;
+            for (int i = 0; i < savedPhis; i++) {
+                variance1 += pow(PhisArray[i][0], 2);
+                variance2 += pow(PhisArray[i][1], 2);
+            }
+            variance1 /= savedPhis;
+            variance2 /= savedPhis;
+            variance1 -= pow(average1, 2);
+            variance2 -= pow(average2, 2);
 
-            outFile << average1 << ' ' << average2;
-
+            outFile << average1 << ' ' << average2 << ' ' << variance1 << ' ' << variance2 << '\n';
             outFile.close();
 
             cout << "--Phi 1 and 2 averages were saved to the output file--\n\n";
-        } else if (key == '2') {
+        } else if (key == '1') {
             cout << "Phis not yet saved, use key '1' to save captured Phis\n";
+        }
+
+        if (savedPhis != lastSavedPhis) {
+            
+            graphPhis(PhisArray, savedPhis);
+
+            lastSavedPhis = savedPhis;
         }
 
 
@@ -563,3 +600,20 @@ void generateHSV (const Mat &origin,  Mat &destination)
         }
     }
 } //generateHSV
+
+void graphPhis (double PhisArray[][2], int savedPhis) {
+    #define ROWS 500
+    #define COLS 500
+
+    Mat canvas(ROWS, COLS, CV_8UC1, Scalar(0,0,0));
+
+    // Phi1 are X, Phi2 are Y
+    Point P;
+    for (int i = 0; i < savedPhis; i++) {
+        P = Point( (int)(PhisArray[i][0]*COLS), (int)(ROWS - PhisArray[i][1] * ROWS) );
+        //cout << P.x << ' ' << ROWS - P.y << '\n'; //debug
+        circle(canvas, P, 3, Scalar( 255, 255, 255), CV_FILLED);
+    }
+    imshow("Phi Graph", canvas);
+    cvMoveWindow("Phi Graph", XVIDEO, YIMAGE + 500);
+}
