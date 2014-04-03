@@ -34,6 +34,8 @@
 
 #define maxColors 10
 
+//////////////////// TURN PARROT ON (1) or OFF (0)
+#define PARROT 1
 
 using namespace cv;
 using namespace std;
@@ -53,8 +55,8 @@ Mat YIQImage;
 Mat HSVImage;
 Mat closing;
 //for parrot use
-//CHeli *heli;
-//CRawImage *image;
+CHeli *heli;
+CRawImage *image;
 
 //other globals
 bool greyScalePointReady;
@@ -70,25 +72,26 @@ ofstream outFile;
 
 int main(int argc, char *argv[])
 {
-	/* First, open camera device */
+/* First, open camera device */
     // Abre webcam
-    	
-     VideoCapture camera;
+    VideoCapture camera;
+    Mat currentImage;
+    if (!PARROT) {
+     
      camera.open(0);
-     Mat currentImage;
-
-    /* Open parrot camera instead */
-    
+     
+    }
+/* Open parrot camera instead */
+    if (PARROT) {
     //establishing connection with the quadcopter
-    // heli = new CHeli();
+    heli = new CHeli();
     
     //this class holds the image from the drone 
-    //  image = new CRawImage(320,240);
+    image = new CRawImage(320,240);
     
-
-  // init currentImage
-    //Mat currentImage = Mat(240, 320, CV_8UC3);
-
+    // init currentImage
+    currentImage = Mat(240, 320, CV_8UC3);
+    }
 
 
     /* Create main OpenCV window to attach callbacks */
@@ -107,14 +110,16 @@ assert((start = clock())!=-1);
     while (key != 27)
 	{
         /* 1 Obtain a new frame from camera web */
+        if (!PARROT) {
 		camera >> currentImage;
-
+        }
         /* 2 Obtain image from Parrot instead */
+        else {
         //image is captured
-     //  heli->renewImage(image);
+        heli->renewImage(image);
         // Copy to OpenCV Mat
-     // rawToMat(currentImage, image);
-        
+        rawToMat(currentImage, image);
+        }        
 
 		if (currentImage.data) 
 		{
@@ -225,7 +230,7 @@ void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage)
 {
     Vec3b maxVec, minVec;
     bool gray;
-    int tolerance, maxValue, minValue;
+    int tolerance[3], maxValue, minValue;
 
     int startY, endY, startX, endX;
 
@@ -239,7 +244,9 @@ void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage)
 
     maxValue = 255;
     minValue = 0;
-    tolerance = 3;
+    tolerance[0] = 5; //H
+    tolerance[1] = 10; //S
+    tolerance[2] = 3; //V
     
     minVec = transformedImage.at<Vec3b>(orig.y, orig.x);
     maxVec = minVec;
@@ -288,16 +295,17 @@ void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage)
    for (int i = 0; i < channels; ++i)
     {
 
-        if ((minVec[i] - tolerance) < minValue)
+        if ((minVec[i] - tolerance[i]) < minValue)
             minVec[i] = minValue;
         else
-            minVec[i] -= tolerance;
+            minVec[i] -= tolerance[i];
         
-        if ((maxVec[i] + tolerance) > maxValue)
+        if ((maxVec[i] + tolerance[i]) > maxValue)
             maxVec[i] = maxValue;
         else
-            maxVec[i] += tolerance;
+            maxVec[i] += tolerance[i];
     }
+
 
     // ya tenemos los valores filtrados, guardamos en un archivo:
     /* OUTPUT FILE */
@@ -305,6 +313,9 @@ void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage)
     if (channels == 3) {    //solo nos importa guardar para imagenes de 3 canales
         outFile << minVec[0] << ' ' << minVec[1] << ' ' << minVec[2] << '\n';
         outFile << maxVec[0] << ' ' << maxVec[1] << ' ' << maxVec[2] << '\n';
+
+        cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+        cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
     }
     outFile.close();
     ////////////////////////////////////////////////////////////

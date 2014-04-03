@@ -36,6 +36,9 @@
 #define maxColors 10
 #define maxAreas 10
 
+//////////////////// TURN PARROT ON (1) or OFF (0)
+#define PARROT 1
+
 using namespace cv;
 using namespace std;
 
@@ -50,8 +53,8 @@ Mat filteredImage;
 Mat HSVImage;
 Mat closing;
 //for parrot use
-//CHeli *heli;
-//CRawImage *image;
+CHeli *heli;
+CRawImage *image;
 
 const Vec3b ColorMat[maxColors] = { //BGR
     Vec3b(255, 0, 0 ),      //blue
@@ -80,27 +83,32 @@ ofstream outFile;
 ifstream inFile;
 Vec3b maxVec, minVec;
 double phi1[maxAreas], phi2[maxAreas];
+//test
+//Moments cvHuMoments;
+//double cvPhis[7];
 
 int main(int argc, char *argv[])
 {
-	/* First, open camera device */
+/* First, open camera device */
     // Abre webcam
-    	
     VideoCapture camera;
-    camera.open(0);
     Mat currentImage;
-
-    /* Open parrot camera instead */
-    
+    if (!PARROT) {
+     
+     camera.open(0);
+     
+    }
+/* Open parrot camera instead */
+    if (PARROT) {
     //establishing connection with the quadcopter
-    // heli = new CHeli();
+    heli = new CHeli();
     
     //this class holds the image from the drone 
-    //  image = new CRawImage(320,240);
+    image = new CRawImage(320,240);
     
-
-  // init currentImage
-    //Mat currentImage = Mat(240, 320, CV_8UC3);
+    // init currentImage
+    currentImage = Mat(240, 320, CV_8UC3);
+    }
 
 
 
@@ -136,13 +144,16 @@ assert((start = clock())!=-1);
     while (key != 27)
 	{
         /* 1 Obtain a new frame from camera web */
-		camera >> currentImage;
-
+        if (!PARROT) {
+        camera >> currentImage;
+        }
         /* 2 Obtain image from Parrot instead */
+        else {
         //image is captured
-     //  heli->renewImage(image);
+        heli->renewImage(image);
         // Copy to OpenCV Mat
-     // rawToMat(currentImage, image);
+        rawToMat(currentImage, image);
+        }
         
 
 		if (currentImage.data) 
@@ -274,8 +285,10 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
     double n11[maxAreas];
 
     Point centroid[maxAreas];
-
-
+/*
+    cvHuMoments = moments(dst, true);
+    HuMoments(cvHuMoments, cvPhis);
+*/
     if (colorDst.empty())
         colorDst = Mat(dst.rows, dst.cols,  CV_8UC3);
     colorDst=Scalar::all(0);  //Start with the empty image
@@ -437,6 +450,10 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         */
         cout << "PHI 1" << "\t" << phi1[i] << endl;
         cout << "PHI 2" << "\t" << phi2[i] << endl;
+
+    //test
+        //cout << "cvPHI 1" << "\t" << cvPhis[0] << endl;
+        //cout << "cvPHI 2" << "\t" << cvPhis[1] << endl;
 
         cout << endl;
         }
