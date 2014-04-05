@@ -35,7 +35,7 @@
 #define maxColors 10
 
 //////////////////// TURN PARROT ON (1) or OFF (0)
-#define PARROT 1
+#define PARROT 0
 
 using namespace cv;
 using namespace std;
