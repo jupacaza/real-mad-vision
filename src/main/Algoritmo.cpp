@@ -610,9 +610,35 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         cout << "u11" << "\t" << u11[i] << endl;
         cout << "angle" << "\t" << angle[i] << endl;
 
-        cout << endl;
-        }
+        int x0, y0, x1, y1;
+        int length = (50 + m00[i] / 800);
 
+        circle(colorDst, Point(xtest[i],ytest[i]), 3, Scalar(128,128,128), -1, 8);
+
+        x0 = xtest[i] - length * cos(angle[i]);
+        y0 = ytest[i] - length * sin(angle[i]);
+
+        x1 = xtest[i] + length * cos(angle[i]);
+        y1 = ytest[i] + length * sin(angle[i]);
+
+        line(colorDst,
+            Point(x0, y0),
+            Point(x1, y1),
+            Scalar(255,255,255), 1, 8);
+
+        x0 = xtest[i] - length * cos(angle[i] + 1.57);
+        y0 = ytest[i] - length * sin(angle[i] + 1.57);
+
+        x1 = xtest[i] + length * cos(angle[i] + 1.57);
+        y1 = ytest[i] + length * sin(angle[i] + 1.57);
+
+        line(colorDst,
+            Point(x0, y0),
+            Point(x1, y1),
+            Scalar(255,255,255), 1, 8);
+
+        cout << endl;
+    }
 } //End Oil Drop
 
 void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage, int type)
