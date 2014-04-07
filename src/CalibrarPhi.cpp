@@ -23,21 +23,11 @@
 #define XIMAGE 0
 #define YIMAGE 20
 #define XVIDEO 1250
-#define XYIQ 0
-#define YYIQ 570
-#define XHSV 950
-#define YHSV 570
-
-#define RGB 0
-#define YIQ 1
-#define HSV 2
-
 
 #define maxColors 10
 #define maxAreas 10
 
-//////////////////// TURN PARROT ON (1) or OFF (0)
-#define PARROT 0
+#define PARROT 0    // TURN PARROT ON (1) or OFF (0)
 
 using namespace cv;
 using namespace std;
@@ -84,6 +74,7 @@ ofstream outFile, phiListFile;
 ifstream inFile;
 Vec3b maxVec, minVec;
 double phi1[maxAreas], phi2[maxAreas];
+double refPhis[4][4];
 //test
 //Moments cvHuMoments;
 //double cvPhis[7];
@@ -133,6 +124,7 @@ assert((start = clock())!=-1);
     inFile >> maxVec[0];
     inFile >> maxVec[1];
     inFile >> maxVec[2];
+    inFile.close();
 
     cout << "Read:\n";
     cout << (int)minVec[0] << ' ' << (int)minVec [1] << ' ' << (int)minVec [2] << '\n';
@@ -187,6 +179,14 @@ assert((start = clock())!=-1);
             OilDrop(closing, oil);
             imshow("oildrop", oil);
         }
+
+        inFile.open("../src/main/data/phi.txt");
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                inFile >> refPhis[i][j];
+            }
+        }
+        inFile.close();
 
 
         if (key == 's' && phi1[0] != -1) { //save phi to array
@@ -452,7 +452,7 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 
         }
     }
-        
+    
     for (int i=0;i<colorIndex;i++) {
         xtest[i]=(double) m10[i]/m00[i];
         ytest[i]=(double) m01[i]/m00[i];
@@ -469,6 +469,7 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 
         phi1[i] = n20[i] + n02[i];
         phi2[i] = pow(n20[i] - n02[i], 2) + 4 * pow(n11[i], 2);
+
 
         cout<<"Region"<< i+1 << "\tValor:"<<endl;
         /*
@@ -503,7 +504,6 @@ void generaBinariaDeArchivo (const Mat &sourceImage, Mat &destinationImage)
 
     int channels = sourceImage.channels();
 
-    //transformar a YIQ o HSV si es necesario
     Mat transformedImage;
     transformedImage = HSVImage;
     generateHSV (sourceImage,transformedImage);
