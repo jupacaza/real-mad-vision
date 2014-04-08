@@ -289,36 +289,41 @@ int main(int argc, char *argv[]) {
 
                         //*******************Debugging************//
                         /*
-                        for (int i=0; i < NumberRegions; i++)
-                        {
-                            for (int j=0; j< 4; j++)
+            
+                            for (int i=0; i < NumberRegions; i++)
                             {
-                                //cout << phi1[i] << ' ' << phi2[i] << endl;
-                                if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
+                                for (int j=0; j< 4; j++)
                                 {
-                                    //go(j);
-                                    switch(j)
+                                    //cout << phi1[i] << ' ' << phi2[i] << endl;
+                                    if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
                                     {
-                                        case 0:
-                                        move1=DERECHA; //R 10
-                                        break;
-                                        case 1:
-                                        move1=IZQUIERDA; //matraz 20
-                                        break;
-                                        case 2:
-                                        move2=ADELANTE; // Ml 03
-                                        break;
-                                        case 3:
-                                        move2=ATRAS; //J 04
-                                        break;
+                                        //go(j);
+                                        switch(j)
+                                        {
+                                            case 0:
+                                                if (move1 == 0)
+                                                    move1=DERECHA; //R 10
+                                                break;
+                                            case 1:
+                                                if (move1 == 0)
+                                                    move1=IZQUIERDA; //matraz 20
+                                                break;
+                                            case 2:
+                                                if (move2 == 0)
+                                                    move2=ADELANTE; // Ml 03
+                                                break;
+                                            case 3:
+                                                if (move2 == 0)
+                                                    move2=ATRAS; //J 04
+                                                break;
+                                        }
+                                        cout << move1 << ' '  << move2 << endl;
                                     }
-                                    cout << move1 << ' '  << move2 << endl;
                                 }
-                            }
 
-                        }
-                        */
-                        //***************************************//
+                            }
+                            
+                        //***************************************/
                         
                     }
 
@@ -370,7 +375,7 @@ int main(int argc, char *argv[]) {
                                 begin = false;
                             }
 
-                            heli->setAngles(0, 0, 0, -3000, 1);
+                            heli->setAngles(0, -500, 0, -5000, 0);
 
                             if (clock()>=endwait)
                             {
@@ -395,19 +400,19 @@ int main(int argc, char *argv[]) {
                                         {
                                             case 0:
                                                 if (move1 == 0)
-                                                    move1=DERECHA; //R 10
+                                                    move1=DERECHA; //"V" 01
                                                 break;
                                             case 1:
                                                 if (move1 == 0)
-                                                    move1=IZQUIERDA; //matraz 20
+                                                    move1=IZQUIERDA; //"[" 20
                                                 break;
                                             case 2:
                                                 if (move2 == 0)
-                                                    move2=ADELANTE; // Ml 03
+                                                    move2=ADELANTE; // "I" 03
                                                 break;
                                             case 3:
                                                 if (move2 == 0)
-                                                    move2=ATRAS; //J 04
+                                                    move2=ATRAS; //"R" 04
                                                 break;
                                         }
                                         //cout << move1 << ' '  << move2 << endl;
@@ -417,15 +422,18 @@ int main(int argc, char *argv[]) {
                             }
 
                             if(move1 != 0 && move2 != 0)
+                            {
                                 state=2;
-                            
+                                cout<<"move1: "<<move1<<endl;
+                                cout<<"move2: "<<move2<<endl;
+                            }
                             break;
 
                         case 2:
                         if (begin)
                         {
                             endwait=time(NULL);
-                            endwait = clock()+2*CLOCKS_PER_SEC;
+                            endwait = clock()+3*CLOCKS_PER_SEC;
                             begin = false;
                         }
 
@@ -1228,7 +1236,7 @@ void graphPhis (double PhisArray[][2], int savedPhis) {
     // Phi1 are X, Phi2 are Y
     Point P;
     for (int i = 0; i < savedPhis; i++) {
-        P = Point( (int)(PhisArray[i][0]*GCOLS), (int)(GROWS - PhisArray[i][1] * GROWS) );
+        P = Point( (int)(PhisArray[i][0]/1.5*GCOLS), (int)(GROWS - PhisArray[i][1] * GROWS) );
         //cout << P.x << ' ' << GROWS - P.y << '\n'; //debug
         circle(canvas, P, 3, Scalar( 255, 255, 255), CV_FILLED);
     }
@@ -1240,7 +1248,7 @@ void graphPhis (double phi1, double phi2) {
     
     // Phi1 are X, Phi2 are Y
     Point P;
-    P = Point( (int)(phi1 * GCOLS), (int)(GROWS - phi2 * GROWS) );
+    P = Point( (int)(phi1/1.5 * GCOLS), (int)(GROWS - phi2 * GROWS) );
     //cout << P.x << ' ' << GROWS - P.y << '\n'; //debug
     circle(canvas, P, 3, *it, CV_FILLED);
     if (it == vecs.end()) it = vecs.begin();
