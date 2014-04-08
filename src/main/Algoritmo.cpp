@@ -132,8 +132,7 @@ int main(int argc, char *argv[]) {
     
 	while (MainFunction != 'q') { // q de quit
         cout << "\033[2J\033[1;1H";     // Clear Console
-            destroyAllWindows();
-        //cvDestroyAllWindows();            // Clear the GUI (close all windows)  = destroyAllWindows()??
+        //cvDestroyAllWindows();            // Clear the GUI (close all windows) 
 		cout << "--- Select the function you want to use:\n";
         cout << "\t1. Fly Parrot with saved parameters\n";
         cout << "\t2. Calibrate Filter values (limits)\n";
@@ -546,7 +545,7 @@ int main(int argc, char *argv[]) {
                 SDL_JoystickClose(m_joystick);
                 delete heli;
                 delete image;
-                destroyAllWindows();
+                //destroyAllWindows();
                 break;
 
 
