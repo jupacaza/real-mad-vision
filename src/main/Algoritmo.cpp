@@ -1,65 +1,52 @@
-/*
- * Title: Etapa 01
- * Class: Vision para Robot
- * Instructor: Dr. Jose Luis Gordillo (http://robvis.mty.itesm.mx/~gordillo/)
- * Code: 
- * Institution: Tec de Monterrey, Campus Monterrey
- * Date: 1.April.2014
- * Description: Parrot and Segmentation Algorithm.
- * This programs uses OpenCV http://www.opencv.org/
- */
-
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include "SDL/SDL.h"
+#include "CHeli.h"
 #include <time.h>
 #include <iostream>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
 #include <math.h>
 #include <queue>
-#include "CHeli.h"
+#include <fstream>
+#include <string>
+//#include <curses.h>
 
 #define XIMAGE 0
 #define YIMAGE 20
 #define XVIDEO 1250
-#define XYIQ 0
-#define YYIQ 570
-#define XHSV 950
-#define YHSV 570
-
-#define RGB 0
-#define YIQ 1
-#define HSV 2
-
 
 #define maxColors 10
+#define maxAreas 10
 
+#define DERECHA 1
+#define IZQUIERDA 2
+#define ADELANTE 3
+#define ATRAS 4
+
+#define GROWS 500
+#define GCOLS 500
 
 using namespace cv;
 using namespace std;
 
-// Here we will store points
-vector<Point> points;
-Point orig, dest;
-
-/* Create images where captured and transformed frames are going to be stored */
+/***************** GLOBALS ***********************/
 Mat currentImage;
 Mat storedImage, backupImage;
 Mat filteredImage;
-Mat blackAndWhiteImage;
-Mat binaryImage;
-Mat grayScaleImage;
-Mat YIQImage;
 Mat HSVImage;
 Mat closing;
-//for parrot use
-//CHeli *heli;
-//CRawImage *image;
+vector<Point> points;
+Point orig, dest;
 
-//other globals
-bool greyScalePointReady;
-Point greyScalePoint;
-
-
+unsigned char PARROT = 1;     // TURN PARROT ON (1) or OFF (0)
+CHeli *heli;
+CRawImage *image;
+bool stop = false;
+float pitch, roll, yaw, height;
+int hover,joyRoll, joyPitch;
 
 const Vec3b ColorMat[maxColors] = { //BGR
     Vec3b(255, 0, 0 ),      //blue
@@ -74,345 +61,675 @@ const Vec3b ColorMat[maxColors] = { //BGR
     Vec3b(128, 0, 0 )       //navy
 };
 
+ofstream outFile, phiListFile;
+ifstream inFile;
+Vec3b maxVec, minVec;
+double phi1[maxAreas], phi2[maxAreas];
+double refPhis[4][4];
 
-
-void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param);
-void mouseCallbackForBinaryImage(int event, int x, int y, int flags, void* param);
-void generateBlackWhite(const Mat &origin, Mat &destination);
-void generateBlackWhite1C(const Mat &origin, Mat &destination) ; //Hace la imagen para un solo canal
-void generateBinary(const Mat &origin, const unsigned char limit, Mat &destination); //limit va de 0 a 255
-void generateGrayScale(Mat &Matrix);
-void rawToMat( Mat &destImage, CRawImage* sourceImage);
-void showHistogram(Mat& img, const char* wname, const int sourceX, const int sourceY);
-void showHistogram(Mat& img, const char* wname, const int sourceX, const int sourceY, const Vec3b components);
-
-Vec3b getK(int &x);
-
-void OilDrop(const Mat &dst, Mat &colorDst);
-
-void generaimagenFiltradaBinaria (const Mat &origin, Mat &destination,int type);
-void generateYIQ(const Mat &origin, Mat &destination);
-void generateHSV(const Mat &origin, Mat &destination);
-
-
-int main(int argc, char *argv[])
-{
-	/* First, open camera device */
-    // Abre webcam
-    	
- VideoCapture camera;
- camera.open(0);
- Mat currentImage;
-
-    /* Open parrot camera instead */
-    
-    //establishing connection with the quadcopter
-    // heli = new CHeli();
-    
-    //this class holds the image from the drone 
-    //  image = new CRawImage(320,240);
-    
-
-  // init currentImage
-    //Mat currentImage = Mat(240, 320, CV_8UC3);
-
-
-
-    /* Create main OpenCV window to attach callbacks */
-    namedWindow("Video");
-
-    unsigned char key = 0;
-
-/*To use timers
 // **Start timer **
-clock_t start;
+clock_t endwait;
+int move1 = 0, move2 = 0;
+int state = -1;
+bool begin;
 
-assert((start = clock())!=-1);
+Mat canvas(GROWS, GCOLS, CV_8UC3, Scalar(0));
+vector<Scalar> vecs;
+vector<Scalar>::iterator it;
+
+int NumberRegions;
+/*************************************************/
+
+/***************** HEADERS ***********************/
+void rawToMat( Mat &destImage, CRawImage* sourceImage);
+Vec3b getK(int &x);
+void OilDrop(const Mat &dst, Mat &colorDst);
+void generaBinariaDeArchivo (const Mat &origin, Mat &destination);
+void generateHSV(const Mat &origin, Mat &destination);
+void graphPhis (double PhisArray[][2], int savedPhis);
+void graphPhis (double, double);
+void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param);
+void generaimagenFiltradaBinaria (const Mat &origin, Mat &destination);
+/*************************************************/
+
+/****************** MAIN *************************/
+int main(int argc, char *argv[]) {
+/*
+	
 */
+    // read color limits from file
+    inFile.open("../src/main/data/limits.txt");
+    inFile >> minVec[0];
+    inFile >> minVec[1];
+    inFile >> minVec[2];
+    inFile >> maxVec[0];
+    inFile >> maxVec[1];
+    inFile >> maxVec[2];
+    inFile.close();
+    cout << "Read:\n";
+    cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+    cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+    // read phi 1 & 2 averages and variations from file
+    inFile.open("../src/main/data/phi.txt"); 
+    for (int i = 0; i < 4; i++) { 
+        for (int j = 0; j < 4; j++) { 
+                inFile >> refPhis[i][j]; 
+            } 
+    } 
+    inFile.close();
 
- 
+	char MainFunction = 0;
+    
+	while (MainFunction != 'q') { // q de quit
+        cout << "\033[2J\033[1;1H";     // Clear Console
+        //cvDestroyAllWindows();            // Clear the GUI (close all windows)
+		cout << "--- Select the function you want to use:\n";
+        cout << "\t1. Fly Parrot with saved parameters\n";
+        cout << "\t2. Calibrate Filter values (limits)\n";
+        cout << "\t3. Calibrate Hu Moments (Phi) for flight control (phi, philist)\n";
+        cout << "\t4. Graph saved moments in philist\n";
+        cout << "Choose and press <ENTER>: ";
+		MainFunction = getchar();
 
-    while (key != 27)
-	{
-        /* 1 Obtain a new frame from camera web */
-		camera >> currentImage;
+        unsigned char key = 0;
+        VideoCapture camera;
+        int savedPhis, lastSavedPhis;
+        double PhisArray[15][2];
 
-        /* 2 Obtain image from Parrot instead */
-        //image is captured
-     //  heli->renewImage(image);
-        // Copy to OpenCV Mat
-     // rawToMat(currentImage, image);
-        
+        string address;
 
-		if (currentImage.data) 
-		{
-            /* Show image */
-            imshow("Video", currentImage);
-            cvMoveWindow("Video", XVIDEO, YIMAGE);
-		}
-		else
-		{
-			cout << "No image data.. " << endl;
-		}
+        switch (MainFunction) {
 
-        if (key == 'c') { //capture snapshot
-            storedImage.release();
-            points.clear(); //remove all stored points on the vector
-            storedImage = currentImage.clone();
-            backupImage = currentImage.clone();
-            namedWindow("Image");
-            cvMoveWindow("Image", XIMAGE, YIMAGE);
-            setMouseCallback("Image", mouseCoordinatesExampleCallback);
-            imshow("Image", storedImage);
+/*****************************************************/
+/*        VUELO DEL PARROT                           */
+/*****************************************************/
 
+            case '1':
+                //establishing connection with the quadcopter
+                heli = new CHeli();
+                //this class holds the image from the drone 
+                image = new CRawImage(320,240);
+                // Destination OpenCV Mat   
+                currentImage = Mat(240, 320, CV_8UC3);
+                // Show it  
+                namedWindow("Video");
 
-        }
-        /***********************************
-            Generate all processing
-        ************************************/
-        
-        if (key == 10 && storedImage.rows > 0) 
-        { //executes on enter
-            generateBlackWhite1C(storedImage, blackAndWhiteImage);
-           // greyScalePointReady = true;  
-            namedWindow("Gray Scale Image");
-            cvMoveWindow("Gray Scale Image", XIMAGE+200, YIMAGE+200);
-            imshow("Gray Scale Image", blackAndWhiteImage);
+                // read color limits from file
+                inFile.open("../src/main/data/limits.txt");
+                inFile >> minVec[0];
+                inFile >> minVec[1];
+                inFile >> minVec[2];
+                inFile >> maxVec[0];
+                inFile >> maxVec[1];
+                inFile >> maxVec[2];
+                inFile.close();
+                cout << "Read:\n";
+                cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+                cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+                // read phi 1 & 2 averages and variations from file
+                inFile.open("../src/main/data/phi.txt"); 
+                for (int i = 0; i < 4; i++) { 
+                    for (int j = 0; j < 4; j++) { 
+                            inFile >> refPhis[i][j]; 
+                        } 
+                } 
+                inFile.close();
 
-            generateGrayScale(grayScaleImage);
-            namedWindow("Grey Scale");
-            cvMoveWindow("Grey Scale",XIMAGE,YIMAGE+100);
-            imshow("Grey Scale", grayScaleImage);
-            setMouseCallback("Grey Scale", mouseCallbackForBinaryImage);
+                savedPhis = 0;
+                lastSavedPhis = 0;
+                
+                phi1[0] = -1;
 
-            //initialization
-            greyScalePoint.x = 200; //catches a 0.5 level in grey scale
-            greyScalePoint.y = 0;
-            greyScalePointReady = true;
-            orig.x = dest.x = 0;
-            }
-               
-
-        if (greyScalePointReady && blackAndWhiteImage.data) 
-        {   //executes on click on greyscale window
-            //in grayScaleImage all channels are equal, pick only one channel
-            unsigned char value = grayScaleImage.at<Vec3b>(greyScalePoint.y, greyScalePoint.x)[0];
-            cout << "Gray Scale value: " << (int)value << endl;
-            generateBinary(blackAndWhiteImage, value, binaryImage);
-            greyScalePointReady = false;  
-
-            //Closing is obtained by the dilation of an image followed by an erosion. 
-            Mat dilateFilter;
-            dilate(binaryImage, dilateFilter, Mat (10, 10, CV_8U));
-            erode(dilateFilter, closing, Mat (10, 10, CV_8U));
-            imshow("closing", closing);   
-        
-
-        }
-        
-        if(key == 'r' && storedImage.data)
-        {
-            imshow("Image",backupImage);
-            storedImage = backupImage;
-        }
-
-        if(key == 'h' && storedImage.data && (orig.x != dest.x))
-        {
-            Mat dilateFilter; //Declarar la variable aqui para que tambien se pueda usar la funcion del enter
-
-            generaimagenFiltradaBinaria(storedImage, filteredImage,HSV);
-            dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
-            erode(dilateFilter, closing, Mat (10, 10, CV_8U));
-            imshow("Image", closing);   
-
-        /* NOTA: PROBAR CON FILTROS DE PASO BAJO SI MEJORA EL FILTRADO
-
-            //medianBlur
-            Mat medianBlurImage;
-            medianBlur(storedImage, medianBlurImage, 5);
-            generaimagenFiltradaBinaria(medianBlurImage, filteredImage,HSV);
-            dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
-            erode(dilateFilter, closing, Mat (10, 10, CV_8U));
-            imshow("Filtrado mediana", closing);   
-
-            //AverageBlur
-            Mat AverageBlurImage;
-            blur(storedImage, AverageBlurImage, Size(5,5), Point(-1,-1));
-            generaimagenFiltradaBinaria(AverageBlurImage, filteredImage,HSV);
-            dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
-            erode(dilateFilter, closing, Mat (10, 10, CV_8U));
-            imshow("Filtrado average", closing);
-
-            // GaussianBlur
-            Mat GaussianImage;
-            GaussianBlur(storedImage, GaussianImage, Size(5,5), 0, 0);
-            generaimagenFiltradaBinaria(GaussianImage, filteredImage,HSV);
-            dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
-            erode(dilateFilter, closing, Mat (10, 10, CV_8U));
-            imshow("Filtrado Gaussian", closing);   
-        */
-
-        }
-
-
-        if (key=='s' && closing.rows > 0)
-        {
-            Mat oil;
-            OilDrop(closing, oil);
-            imshow("oildrop", oil);
-        }
-
-
-        /*************************************/
-        key = waitKey(5);
-	}
-} //main
-
-void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param)
-{
-    static bool clicked=false;
-    static char wname[5] = {'B', 0, 'G', 0, 'R'};
-
-    switch (event)
-    {
-        case CV_EVENT_LBUTTONDOWN:
-            cout << "  Mouse X, Y: " << x << ", " << y << 
-                " color: R " << (int)storedImage.at<Vec3b>(y, x)[2] <<
-                " G " << (int)storedImage.at<Vec3b>(y, x)[1] <<
-                " B " << (int)storedImage.at<Vec3b>(y, x)[0];
-            cout << endl;
-
-            clicked=true;
-            orig = Point(x,y);
-            /*  Draw a point */
-            points.push_back(Point(x, y));
-
-            imshow("Image", storedImage);
-         //   showHistogram(storedImage, wname, XIMAGE, YIMAGE, storedImage.at<Vec3b>(y, x));
-
-            break;
-
-        case CV_EVENT_MOUSEMOVE:
-            if (clicked)
+                while (key != 27)
                 {
-                    Mat tmpImage;
-                    tmpImage=storedImage.clone();
-                    dest = Point(x,y);
+                    //image is captured
+                    heli->renewImage(image);
+                    // Copy to OpenCV Mat
+                    rawToMat(currentImage, image);
+
+                    /* test */
+                    move1 = move2 = 0;
+
+                    if (currentImage.data) 
                     {
-                        rectangle(tmpImage, orig, dest,Scalar( 0, 255, 0));
-                         imshow("Image", tmpImage);
+                        /* Show image */
+                        imshow("Video", currentImage);
+                        //cvMoveWindow("Video", XVIDEO, YIMAGE);
+                        storedImage.release();
+                        points.clear(); //remove all stored points on the vector
+                        storedImage = currentImage.clone();
+                        backupImage = currentImage.clone();
+                        //namedWindow("Image");
+                        //cvMoveWindow("Image", XIMAGE, YIMAGE);
+                        //imshow("Image", storedImage);
+
+                        Mat dilateFilter; //Declarar la variable aqui para que tambien se pueda usar la funcion del enter
+                        generaBinariaDeArchivo(storedImage, filteredImage);
+                        dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
+                        erode(dilateFilter, closing, Mat (10, 10, CV_8U));
+                        //imshow("Image", closing);
+
+                        Mat oil;
+                        OilDrop(closing, oil);
+                        imshow("oildrop", oil);
+
+                        /*Debugging*/
+                        for (int i=0; i < NumberRegions; i++)
+                        {
+                            for (int j=0; j< 4; j++)
+                            {
+                                //cout << phi1[i] << ' ' << phi2[i] << endl;
+                                if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
+                                {
+                                    //go(j);
+                                    switch(j)
+                                    {
+                                        case 0:
+                                        move1=DERECHA; //R 10
+                                        break;
+                                        case 1:
+                                        move1=IZQUIERDA; //matraz 20
+                                        break;
+                                        case 2:
+                                        move2=ADELANTE; // Ml 03
+                                        break;
+                                        case 3:
+                                        move2=ATRAS; //J 04
+                                        break;
+                                    }
+                                    cout << move1 << ' '  << move2 << endl;
+                                }
+                            }
+
+                        }
+                        /***********************/
+                        
+                    }
+
+                    else
+                    {
+                        cout << "No image data.. " << endl;
+                    }
+
+                    //--------------Controlar el parrot--------------------------------------------
+                    if (key=='l')
+                    {
+                        heli->takeoff();
+                        state=0;
+                        begin = true;
+                    }
+                    
+                    //
+                    //cout << state << endl;        
+
+                    switch(state)
+                    {
+                    case 0:
+                        if (begin)
+                        {
+                            endwait=time(NULL);
+                            endwait = clock()+15*CLOCKS_PER_SEC;
+                            begin = false;
+                        }
+
+                        heli->setAngles(0, 0, 0, -3000, 1);
+
+                        if (clock()>=endwait)
+                        {
+                            state=1;
+                            begin = true;
+                        }
+                        break;
+
+                    case 1:
+                    heli->setAngles(0, 0, 0, 0, 1);
+
+                        for (int i=0; i < NumberRegions; i++)
+                        {
+                            for (int j=0; j< 4; j++)
+                            {
+                                //cout << phi1[i] << ' ' << phi2[i] << endl;
+                                if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
+                                {
+                                    //go(j);
+                                    switch(j)
+                                    {
+                                        case 0:
+                                        move1=DERECHA; //R 10
+                                        break;
+                                        case 1:
+                                        move1=IZQUIERDA; //matraz 20
+                                        break;
+                                        case 2:
+                                        move2=ADELANTE; // Ml 03
+                                        break;
+                                        case 3:
+                                        move2=ATRAS; //J 04
+                                        break;
+                                    }
+                                    cout << move1 << ' '  << move2 << endl;
+                                }
+                            }
+
+                        }
+
+                        if(move1 != 0 && move2 != 0)
+                            state=2;
+                    break;
+
+                    case 2:
+                    if (begin)
+                    {
+                        endwait=time(NULL);
+                        endwait = clock()+2*CLOCKS_PER_SEC;
+                        begin = false;
+                    }
+
+                    if(move1 == DERECHA)
+                        heli->setAngles(0, 5000, 0, 0, 0);
+                    else
+                        heli->setAngles(0, -5000, 0, 0, 0);
+
+
+                    if (clock()>=endwait)
+                    {
+                        state=3;
+                        begin = true;
+                    }
+                    break;
+
+                    case 3:
+                    if (begin)
+                    {
+                        endwait=time(NULL);
+                        endwait = clock()+2*CLOCKS_PER_SEC;
+                        begin = false;
+                    }
+
+                    heli->setAngles(0, 0, 0, 0, 1);
+
+                    if (clock()>=endwait)
+                    {
+                        state=4;
+                        begin = true;
+                    }
+                    break;
+
+                    case 4:
+                    if (begin)
+                    {
+                        endwait=time(NULL);
+                        endwait = clock()+3*CLOCKS_PER_SEC;
+                        begin = false;
+                    }
+
+                    if(move2 == ADELANTE)
+                        heli->setAngles(-5000, 0, 0, 0, 0);
+                    else
+                        heli->setAngles(5000, 0, 0, 0, 0);
+
+                    if (clock()>=endwait)
+                    {
+                        state=5;
+                        begin = true;
+                    }
+                    break;
+
+                    case 5:
+                    if (begin)
+                    {
+                        endwait=time(NULL);
+                        endwait = clock()+3*CLOCKS_PER_SEC;
+                        begin = false;
+                    }
+
+                    heli->setAngles(0, 0, 0, 1000, 1);
+
+                    if (clock()>=endwait)
+                    {
+                        heli->land();
+                        //endwait=clock()+5*CLOCKS_PER_SEC;
+                        state=-1;
+                     }
+                    break;
+
+                    default:
+                    heli->setAngles(0, 0, 0, 0, 1);
+                    break;
+                         
+                    }
+                         
+                        
+                    /*************************************/
+                    key = waitKey(5);
+                }
+
+                delete heli;
+                delete image;
+                break;
+
+
+
+/*****************************************************/
+/*        CALIBRACION DEL FILTRO                     */
+/*****************************************************/
+
+            case '2':
+                if (!PARROT) {  // no parrot configured, open PC webcam
+                    camera.open(0);
+                } else {        // parrot configured
+                    heli = new CHeli();
+                    image = new CRawImage(320,240);
+                    currentImage = Mat(240, 320, CV_8UC3);
+                }
+
+                namedWindow("Video");
+                
+
+                while (key != 27)
+                {
+                    /* 1 Obtain a new frame from camera web */
+                    if (!PARROT) {
+                    camera >> currentImage;
+                    }
+                    /* 2 Obtain image from Parrot instead */
+                    else {
+                    //image is captured
+                    heli->renewImage(image);
+                    // Copy to OpenCV Mat
+                    rawToMat(currentImage, image);
+                    }        
+
+                    if (currentImage.data) 
+                    {
+                        /* Show image */
+                        imshow("Video", currentImage);
+                        cvMoveWindow("Video", XVIDEO, YIMAGE);
+                    }
+                    else
+                    {
+                        cout << "No image data.. " << endl;
+                    }
+
+                    if (key == 'c') { //capture snapshot
+                        storedImage.release();
+                        points.clear(); //remove all stored points on the vector
+                        storedImage = currentImage.clone();
+                        backupImage = currentImage.clone();
+                        namedWindow("Image");
+                        cvMoveWindow("Image", XIMAGE, YIMAGE);
+                        setMouseCallback("Image", mouseCoordinatesExampleCallback);
+                        imshow("Image", storedImage);
+
+
+                    }
+                    /***********************************
+                        Generate all processing
+                    ************************************/
+                    
+                    if(key == 'r' && storedImage.data)
+                    {
+                        imshow("Image",backupImage);
+                        storedImage = backupImage;
+                    }
+
+                    if(key == 'h' && storedImage.data && (orig.x != dest.x))
+                    {
+                        Mat dilateFilter; //Declarar la variable aqui para que tambien se pueda usar la funcion del enter
+
+                        generaimagenFiltradaBinaria(storedImage, filteredImage);
+                        dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
+                        erode(dilateFilter, closing, Mat (10, 10, CV_8U));
+                        imshow("Image", closing);
+                    }
+
+                    /*************************************/
+                    key = waitKey(5);
+                }
+                if (key == 27) {
+                    destroyAllWindows();
+                }
+                
+                break;
+
+
+/*****************************************************/
+/*        CALIBRACION DE PHI                         */
+/*****************************************************/
+
+            case '3':
+                if (!PARROT) {  // no parrot configured, open PC webcam
+                    camera.open(0);
+                } else {        // parrot configured
+                    heli = new CHeli();
+                    image = new CRawImage(320,240);
+                    currentImage = Mat(240, 320, CV_8UC3);
+                }
+
+                namedWindow("Video");
+
+                // read color limits from file
+                inFile.open("../src/main/data/limits.txt");
+                inFile >> minVec[0];
+                inFile >> minVec[1];
+                inFile >> minVec[2];
+                inFile >> maxVec[0];
+                inFile >> maxVec[1];
+                inFile >> maxVec[2];
+                inFile.close();
+
+                cout << "Read:\n";
+                cout << (int)minVec[0] << ' ' << (int)minVec [1] << ' ' << (int)minVec [2] << '\n';
+                cout << (int)maxVec[0] << ' ' << (int)maxVec [1] << ' ' << (int)maxVec [2] << '\n';
+
+                savedPhis = 0;
+                lastSavedPhis = 0;
+                phi1[0] = -1;
+
+                inFile.open("../src/main/data/phi.txt");
+                for (int i = 0; i < 4; i++) {
+                    for (int j = 0; j < 4; j++) {
+                        inFile >> refPhis[i][j];
                     }
                 }
-            break;
-        case CV_EVENT_LBUTTONUP:
+                inFile.close();
+
+                while (key != 27)
+                {
+                    /* 1 Obtain a new frame from camera web */
+                    if (!PARROT) {
+                    camera >> currentImage;
+                    }
+                    /* 2 Obtain image from Parrot instead */
+                    else {
+                    //image is captured
+                    heli->renewImage(image);
+                    // Copy to OpenCV Mat
+                    rawToMat(currentImage, image);
+                    }
+                    
+
+                    if (currentImage.data) 
+                    {
+                        /* Show image */
+                        imshow("Video", currentImage);
+                        cvMoveWindow("Video", XVIDEO, YIMAGE);
+                    }
+                    else
+                    {
+                        cout << "No image data.. " << endl;
+                    }
+
+                    if (key == 'c') { //capture snapshot
+                        storedImage.release();
+                        points.clear(); //remove all stored points on the vector
+                        storedImage = currentImage.clone();
+                        backupImage = currentImage.clone();
+                        //namedWindow("Image");
+                        //cvMoveWindow("Image", XIMAGE, YIMAGE);
+                        //imshow("Image", storedImage);
+
+                        Mat dilateFilter; //Declarar la variable aqui para que tambien se pueda usar la funcion del enter
+                        generaBinariaDeArchivo(storedImage, filteredImage);
+                        dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
+                        erode(dilateFilter, closing, Mat (10, 10, CV_8U));
+                        //imshow("Image", closing);
+
+                        Mat oil;
+                        OilDrop(closing, oil);
+                        imshow("oildrop", oil);
+                    }
+
+                    if (key == 's' && phi1[0] != -1) { //save phi to array
+                        //only saves the phis of the blue area
+
+                        if (savedPhis < 15) {
+                            PhisArray[savedPhis][0] = phi1[0];
+                            PhisArray[savedPhis++][1] = phi2[0];
+                            cout << "Phis of Sample " << savedPhis << " were saved:\n";
+                            cout << "\tPhi1: " << PhisArray[savedPhis-1][0] << "\tPhi2: " << PhisArray[savedPhis-1][1] << '\n';
+                        } else {
+                            cout << "Max number of saved Phis (" << savedPhis << ") reached\n";
+                        }
+
+                    } else if (key == 's') {
+                        cout << "Phi 1 and 2 not yet captured" << '\n';
+                    }
+
+                    if (key == 'd' && savedPhis > 0) {
+                        savedPhis--;
+                        cout << "Deleted last pair of Phis\n";
+                    } else if (key == 'd') {
+                        cout << "No Phis to delete\n";
+                    }
+
+
+                    if (key == '1' && savedPhis > 0) { //save phis to files
+            /*
+                        char option;
+                        cout << "Saving Phi to new file or existing file? (n/e) ";
+                        option = getchar();
+
+                        if (option == 'n') {
+                            outFile.open("../src/main/data/phi.txt");
+                            phiListFile.open("../src/main/data/philist.txt");
+                        } else {
+             */               outFile.open("../src/main/data/phi.txt", ios::app);
+                            phiListFile.open("../src/main/data/philist.txt", ios::app);
+             //           }
+
+                        double sum1 = 0, sum2 = 0;
+                        double average1 = 0, average2 = 0;
+                        for (int i = 0; i < savedPhis; i++) {
+                            sum1 += PhisArray[i][0];
+                            sum2 += PhisArray[i][1];
+                            phiListFile << PhisArray[i][0] << ' ' << PhisArray[i][1] << '\r';
+                        }
+                        phiListFile << '\r';
+                        phiListFile.close();
+                        average1 = sum1 / savedPhis;
+                        average2 = sum2 / savedPhis;
+
+                        // Variance
+                        double variance1 = 0, variance2 = 0;
+                        for (int i = 0; i < savedPhis; i++) {
+                            variance1 += pow(PhisArray[i][0], 2);
+                            variance2 += pow(PhisArray[i][1], 2);
+                        }
+                        variance1 /= savedPhis;
+                        variance2 /= savedPhis;
+                        variance1 -= pow(average1, 2);
+                        variance2 -= pow(average2, 2);
+
+                        outFile << average1 << ' ' << average2 << ' ' << variance1 << ' ' << variance2 << '\n';
+                        outFile.close();
+
+                        cout << "--Phi 1 and 2 averages were saved to the output file--\n\n";
+                    } else if (key == '1') {
+                        cout << "Phis not yet saved, use key '1' to save captured Phis\n";
+                    }
+
+                    if (savedPhis != lastSavedPhis) {
+                        
+                        graphPhis(PhisArray, savedPhis);
+
+                        lastSavedPhis = savedPhis;
+                    }
+
+
+                    /*************************************/
+                    key = waitKey(5);
+                }
+                break;
+
+
+
+/*****************************************************/
+/*        GRAFICA DE PHIS                            */
+/*****************************************************/
+
+            case '4':
+                
+                double phi1, phi2;
+                vecs.push_back(Scalar(255, 0, 0 ,0));      //blue
+                vecs.push_back(Scalar(0, 255, 0 ,0));      //green
+                vecs.push_back(Scalar(0, 0, 255 ,0));     //red
+                vecs.push_back(Scalar(255, 255, 0 ,0));    //cyan
+                vecs.push_back(Scalar(0, 255, 255 ,0));    //yellow
+                vecs.push_back(Scalar(255, 0, 255 ,0));    //magenta
+                vecs.push_back(Scalar(0, 154, 255 ,0));    //orange
+                vecs.push_back(Scalar(0, 128, 128 ,0));    //olive
+                vecs.push_back(Scalar(0, 100, 0 ,0));      //darkgreen
+                vecs.push_back(Scalar(128, 0, 0 ,0));       //navy
+                it = vecs.begin();
+
+                address = "../src/main/data/philist.txt";
+                inFile.open(address.c_str());
+
+                while (!inFile.eof()) {
+                        inFile >> phi1;
+                        inFile >> phi2;
+                        inFile.get(); //eat 1 \r
+                        cout << "Read:\t";
+                        cout << phi1 << ' ' << phi2 << '\n';
+
+                        graphPhis (phi1, phi2);
+
+                        if (inFile.peek() == '\r') {
+                            it++;
+                            if (it == vecs.end())
+                                it = vecs.begin();
+                            inFile.get(); //eat 1 \r
+                            cout << '\n';
+                        }
+
+                        while ( (inFile.peek() < '0' || inFile.peek() > '9') && !inFile.eof()) {
+                            inFile.get();
+                        }
+                }
+
+                key = 0;
+                while (key != 27) {
+                    key = waitKey(5);
+                }
+
+                break;
             
-            clicked=false;
-            break;
-    }
-}//mouseCoordinatesExampleCallback
 
-void mouseCallbackForBinaryImage(int event, int x, int y, int flags, void* param) 
-{
-    switch (event)
-    {
-        case CV_EVENT_LBUTTONDOWN:
-            greyScalePoint.x = x;
-            greyScalePoint.y = y;
-            greyScalePointReady = true;
-            break;
-        default:
-            break;
-    }
-} //mouseCallbackForBinaryImage
 
-void generateBlackWhite(const Mat &origin, Mat &destination) 
-{
-    int average;
-
-    if (destination.empty())
-        destination = Mat(origin.rows, origin.cols, origin.type());
-
-    int channels = origin.channels();
-    
-    for (int y = 0; y < origin.rows; ++y) 
-    {
-        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
-        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
-        for (int x = 0; x < origin.cols; ++x) {
-            average = ( sourceRowPointer[x * channels] + sourceRowPointer[x * channels + 1] + sourceRowPointer[x * channels + 2] ) / 3;
-            destinationRowPointer[x * channels    ] = (unsigned char)average;
-            destinationRowPointer[x * channels + 1] = (unsigned char)average;
-            destinationRowPointer[x * channels + 2] = (unsigned char)average;
+            default:
+                break;
         }
-    }
-
-} //generateBlackWhite
-
-void generateBlackWhite1C(const Mat &origin, Mat &destination) 
-{
-    int average;
-
-    if (destination.empty())
-        destination = Mat(origin.rows, origin.cols, CV_8UC1);
-
-    int channels = origin.channels();
-    
-    for (int y = 0; y < origin.rows; ++y) 
-    {
-        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
-        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
-        for (int x = 0; x < origin.cols; ++x) {
-            average = ( sourceRowPointer[x * channels] + sourceRowPointer[x * channels + 1] + sourceRowPointer[x * channels + 2] ) / 3;
-            destinationRowPointer[x] = (unsigned char)average; 
-            //Solamente escribe el promedio en el unico canal de la imagen
-        }
-    }
-}//generate blackwhite
-
-void generateBinary(const Mat &origin, const unsigned char limit, Mat &destination) 
-{
-    if (destination.empty())
-        destination = Mat(origin.rows, origin.cols, origin.type());
-
-    int channels = origin.channels();
-    
-    for (int y = 0; y < origin.rows; ++y) 
-    {
-        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
-        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
-        for (int x = 0; x < origin.cols; ++x) {
-            for (int i = 0; i < channels; ++i) {
-                if (sourceRowPointer[x * channels + i] < limit )
-                    destinationRowPointer[x * channels + i] = 0;
-                else
-                    destinationRowPointer[x * channels + i] = 255;
-            }
-        }
-    }
-} //generateBinary
+        
+		usleep(10000);
+	}
+}
+/*************** END OF MAIN *********************/
 
 
-
-void generateGrayScale(Mat &Matrix) 
-{
-    Matrix.create(25,255,CV_8UC3);
-
-    int channels = Matrix.channels();
-    
-    for (int y = 0; y < Matrix.rows; ++y) 
-    {
-        uchar* rowPointer = (uchar*) Matrix.ptr<uchar>(y);
-        for (int x = 0; x < Matrix.cols; ++x)
-            for (int i = 0; i < channels; ++i)
-            {
-                rowPointer[x * channels + i] = x;
-            }
-    }
-} //generateGrayScale
-
+/*************** PROCEDURES **********************/
 // Convert CRawImage to Mat *for parrot use*
-void rawToMat( Mat &destImage, CRawImage* sourceImage)
-{   
+void rawToMat( Mat &destImage, CRawImage* sourceImage) {   
     uchar *pointerImage = destImage.ptr(0);
     
     for (int i = 0; i < 240*320; i++)
@@ -432,10 +749,9 @@ Vec3b getK(int &x) {
     return vector;
 }
 
-//Imagen binaria, Imagen destino
 void OilDrop(const Mat &dst, Mat &colorDst) {
     Vec3b k;
-    uchar aux;
+    //uchar aux;
     int colorIndex=0;
     Vec3b negro=Vec3b(0, 0, 0); //Use to compare with black color
     
@@ -443,22 +759,24 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
     int factor; // Variable to explore in spiral
     int delta;
 
-    #define maxAreas 10
     int m00[maxAreas]; //Variable to get the size of the blobs
     long m10[maxAreas];
     long m01[maxAreas];
     long m20[maxAreas];
     long m02[maxAreas];
     long m11[maxAreas];
-    double u11[maxAreas];
+    double u11[maxAreas];   //u00 = m00
     double u20[maxAreas];
     double u02[maxAreas];
     double angle[maxAreas];
     double xtest[maxAreas];
     double ytest[maxAreas];
+
+    double n20[maxAreas];
+    double n02[maxAreas];
+    double n11[maxAreas];
+
     Point centroid[maxAreas];
-
-
     if (colorDst.empty())
         colorDst = Mat(dst.rows, dst.cols,  CV_8UC3);
     colorDst=Scalar::all(0);  //Start with the empty image
@@ -585,7 +903,8 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 
         }
     }
-        
+    NumberRegions=colorIndex;
+
     for (int i=0;i<colorIndex;i++) {
         xtest[i]=(double) m10[i]/m00[i];
         ytest[i]=(double) m01[i]/m00[i];
@@ -596,7 +915,16 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 
         centroid[i]=Point(xtest[i], ytest[i]);
 
+        n20[i] = u20[i] / pow(m00[i], 2); // power = p+q/2 +1
+        n02[i] = u02[i] / pow(m00[i], 2);
+        n11[i] = u11[i] / pow(m00[i], 2);
+
+        phi1[i] = n20[i] + n02[i];
+        phi2[i] = pow(n20[i] - n02[i], 2) + 4 * pow(n11[i], 2);
+
+/*
         cout<<"Region"<< i+1 << "\tValor:"<<endl;
+        
         cout << "m00" << "\t" << m00[i] << endl;
         cout << "m10" << "\t" << m10[i] << endl;
         cout << "m01" << "\t" << m01[i] << endl;
@@ -609,9 +937,12 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         cout << "u02" << "\t" << u02[i] << endl;
         cout << "u11" << "\t" << u11[i] << endl;
         cout << "angle" << "\t" << angle[i] << endl;
-
+        cout << "PHI 1" << "\t" << phi1[i] << endl;
+        cout << "PHI 2" << "\t" << phi2[i] << endl;
+        cout << endl;
+*/
         int x0, y0, x1, y1;
-        int length = (50 + m00[i] / 800);
+        int length = (50 + m00[i] / 500);
 
         circle(colorDst, Point(xtest[i],ytest[i]), 3, Scalar(128,128,128), -1, 8);
 
@@ -625,7 +956,7 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
             Point(x0, y0),
             Point(x1, y1),
             Scalar(255,255,255), 1, 8);
-
+        length = (30 + m00[i] / 800);
         x0 = xtest[i] - length * cos(angle[i] + 1.57);
         y0 = ytest[i] - length * sin(angle[i] + 1.57);
 
@@ -636,104 +967,19 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
             Point(x0, y0),
             Point(x1, y1),
             Scalar(255,255,255), 1, 8);
+        }
 
-        cout << endl;
-    }
-} //End Oil Drop
+} //End OilDrop
 
-void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage, int type)
-{
-    Vec3b maxVec, minVec;
+void generaBinariaDeArchivo (const Mat &sourceImage, Mat &destinationImage) {
     bool gray;
-    int tolerance, maxValue, minValue;
-
-    int startY, endY, startX, endX;
 
     int channels = sourceImage.channels();
-    
 
-
-    //transformar a YIQ o HSV si es necesario
     Mat transformedImage;
-    switch(type)
-    {
-                    
-        case YIQ:
-                    transformedImage = YIQImage;
-                    generateYIQ(sourceImage,transformedImage);
-                    break;
-                
-        case HSV:
-                    transformedImage = HSVImage;
-                    generateHSV (sourceImage,transformedImage);
-                    break;
-        default:
-                    transformedImage=sourceImage;
-    }
-
-    maxValue = 255;
-    minValue = 0;
-    tolerance = 3;
+    transformedImage = HSVImage;
+    generateHSV (sourceImage,transformedImage);
     
-    minVec = transformedImage.at<Vec3b>(orig.y, orig.x);
-    maxVec = minVec;
-
-    if(dest.y >= orig.y)
-    {
-        startY = orig.y;
-        endY = dest.y;
-    }
-    else
-    {
-        startY = dest.y;
-        endY = orig.y;
-    }
-
-    if(dest.x >= orig.x)
-    {
-        startX = orig.x;
-        endX = dest.x;
-    }
-    else
-    {
-        startX = dest.x;
-        endX = orig.x;
-    }
-
-    for (int y = startY; y <= endY; y++) 
-    {
-        uchar* rowPointer = (uchar*) transformedImage.ptr<uchar>(y);
-
-        for (int x = startX; x <= endX; x++)
-            for (int i = 0; i < channels; ++i)
-            {
-                if(rowPointer[x * channels + i] > maxVec[i])
-                {
-                    maxVec[i] = rowPointer[x * channels + i];
-                }
-
-                if(rowPointer[x * channels + i] < minVec[i])
-                {
-                    minVec[i] = rowPointer[x * channels + i];
-                }
-            }
-    }
-    
-   for (int i = 0; i < channels; ++i)
-    {
-
-        if ((minVec[i] - tolerance) < minValue)
-            minVec[i] = minValue;
-        else
-            minVec[i] -= tolerance;
-        
-        if ((maxVec[i] + tolerance) > maxValue)
-            maxVec[i] = maxValue;
-        else
-            maxVec[i] += tolerance;
-    }
-
-
     if (destinationImage.empty())
         destinationImage = Mat(transformedImage.rows, transformedImage.cols, CV_8UC1);
     
@@ -759,52 +1005,9 @@ void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage,
             }
         }
     }
-} //generaimagenFiltrada
+} // END generaimagenFiltrada
 
-void generateYIQ (const Mat &origin, Mat &destination)   
-{
-    double blue, red, green;
-    float yq, iq, qq;
-
-    if (destination.empty())
-        destination= Mat(origin.rows, origin.cols, origin.type());
-
-    int channels = origin.channels();
-    
-    for (int y = 0; y < origin.rows; ++y) 
-    {
-        uchar* sourceRowPointer = (uchar*) origin.ptr<uchar>(y);
-        uchar* destinationRowPointer = (uchar*) destination.ptr<uchar>(y);
-        for (int x = 0; x < origin.cols; ++x)
-        {
-            blue= sourceRowPointer[x * channels]/255.0;
-            green = sourceRowPointer[x * channels + 1]/255.0;
-            red = sourceRowPointer[x * channels + 2]/255.0;
-            
-            yq = 0.299*red + 0.587*green + 0.114*blue;
-            iq = 0.596*red - 0.275*green - 0.321*blue;
-            qq = 0.212*red - 0.523*green + 0.311*blue;
-
-            /*
-                y is a value from 0 to 1
-                i is a value from -0.596 to 0.596, difference = 1.192
-                q is a value from -0.523 to 0.523, difference = 1.046
-
-                adjustment must be made
-            */
-
-            iq = (iq + 0.596) / 1.192;
-            qq = (qq + 0.523) / 1.046;
-
-            destinationRowPointer[x * channels    ] = yq * 255;
-            destinationRowPointer[x * channels + 1] = iq * 255;
-            destinationRowPointer[x * channels + 2] = qq * 255;
-        }
-    }
-} //generateYIQ
-
-void generateHSV (const Mat &origin,  Mat &destination)
-{
+void generateHSV (const Mat &origin,  Mat &destination) {
     double blue, red, green;
     double hv, sv, vv;
     double min, max, delta;
@@ -867,134 +1070,196 @@ void generateHSV (const Mat &origin,  Mat &destination)
             destinationRowPointer[x * channels + 2] = vv * 255;
         }
     }
-} //generateHSV
+} // END generateHSV
 
-void showHistogram(Mat& img, const char* wname, const int sourceX, const int sourceY)
+void graphPhis (double PhisArray[][2], int savedPhis) {
+    Mat canvas(GROWS, GCOLS, CV_8UC1, Scalar(0,0,0));
+
+    // Phi1 are X, Phi2 are Y
+    Point P;
+    for (int i = 0; i < savedPhis; i++) {
+        P = Point( (int)(PhisArray[i][0]*GCOLS), (int)(GROWS - PhisArray[i][1] * GROWS) );
+        //cout << P.x << ' ' << GROWS - P.y << '\n'; //debug
+        circle(canvas, P, 3, Scalar( 255, 255, 255), CV_FILLED);
+    }
+    imshow("Phi Graph", canvas);
+    cvMoveWindow("Phi Graph", XVIDEO, YIMAGE + 500);
+} // END graphPhis
+
+void graphPhis (double phi1, double phi2) {
+    
+    // Phi1 are X, Phi2 are Y
+    Point P;
+    P = Point( (int)(phi1 * GCOLS), (int)(GROWS - phi2 * GROWS) );
+    //cout << P.x << ' ' << GROWS - P.y << '\n'; //debug
+    circle(canvas, P, 3, *it, CV_FILLED);
+    if (it == vecs.end()) it = vecs.begin();
+    
+    imshow("Phi Graph", canvas);
+    cvMoveWindow("Phi Graph", XVIDEO, YIMAGE + 500);
+} // END graphPhis
+
+void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param)
 {
-    int bins = 256;             // number of bins
-    int nc = img.channels();    // number of channels
+    static bool clicked=false;
+    //static char wname[5] = {'B', 0, 'G', 0, 'R'};
 
-    vector<Mat> hist(nc);       // histogram arrays
-
-    // Initalize histogram arrays
-    for (unsigned int i = 0; i < hist.size(); i++)
-        hist[i] = Mat::zeros(1, bins, CV_32SC1);
-
-    // Calculate the histogram of the image
-    for (int i = 0; i < img.rows; i++)
+    switch (event)
     {
-        for (int j = 0; j < img.cols; j++)
-        {
-            for (int k = 0; k < nc; k++)
+        case CV_EVENT_LBUTTONDOWN:
+            cout << "  Mouse X, Y: " << x << ", " << y << 
+                " color: R " << (int)storedImage.at<Vec3b>(y, x)[2] <<
+                " G " << (int)storedImage.at<Vec3b>(y, x)[1] <<
+                " B " << (int)storedImage.at<Vec3b>(y, x)[0];
+            cout << endl;
+
+            clicked=true;
+            orig = Point(x,y);
+            /*  Draw a point */
+            points.push_back(Point(x, y));
+
+            imshow("Image", storedImage);
+         //   showHistogram(storedImage, wname, XIMAGE, YIMAGE, storedImage.at<Vec3b>(y, x));
+
+            break;
+
+        case CV_EVENT_MOUSEMOVE:
+            if (clicked)
+                {
+                    Mat tmpImage;
+                    tmpImage=storedImage.clone();
+                    dest = Point(x,y);
+                    {
+                        rectangle(tmpImage, orig, dest,Scalar( 0, 255, 0));
+                         imshow("Image", tmpImage);
+                    }
+                }
+            break;
+        case CV_EVENT_LBUTTONUP:
+            
+            clicked=false;
+            break;
+    }
+}// END mouseCoordinatesExampleCallback
+
+void generaimagenFiltradaBinaria (const Mat &sourceImage, Mat &destinationImage)
+{
+    Vec3b maxVec, minVec;
+    bool gray;
+    int tolerance[3], maxValue, minValue;
+
+    int startY, endY, startX, endX;
+
+    int channels = sourceImage.channels();
+
+    //transformar a YIQ o HSV si es necesario
+    Mat transformedImage;
+
+    transformedImage = HSVImage;
+    generateHSV (sourceImage,transformedImage);
+
+    maxValue = 255;
+    minValue = 0;
+    tolerance[0] = 5; //H
+    tolerance[1] = 10; //S
+    tolerance[2] = 5; //V
+    
+    minVec = transformedImage.at<Vec3b>(orig.y, orig.x);
+    maxVec = minVec;
+
+    if(dest.y >= orig.y)
+    {
+        startY = orig.y;
+        endY = dest.y;
+    }
+    else
+    {
+        startY = dest.y;
+        endY = orig.y;
+    }
+
+    if(dest.x >= orig.x)
+    {
+        startX = orig.x;
+        endX = dest.x;
+    }
+    else
+    {
+        startX = dest.x;
+        endX = orig.x;
+    }
+
+    for (int y = startY; y <= endY; y++) 
+    {
+        uchar* rowPointer = (uchar*) transformedImage.ptr<uchar>(y);
+
+        for (int x = startX; x <= endX; x++)
+            for (int i = 0; i < channels; ++i)
             {
-                uchar val = nc == 1 ? img.at<uchar>(i,j) : img.at<Vec3b>(i,j)[k];
-                hist[k].at<int>(val) += 1;
+                if(rowPointer[x * channels + i] > maxVec[i])
+                {
+                    maxVec[i] = rowPointer[x * channels + i];
+                }
+
+                if(rowPointer[x * channels + i] < minVec[i])
+                {
+                    minVec[i] = rowPointer[x * channels + i];
+                }
             }
-        }
+    }
+    
+   for (int i = 0; i < channels; ++i)
+    {
+
+        if ((minVec[i] - tolerance[i]) < minValue)
+            minVec[i] = minValue;
+        else
+            minVec[i] -= tolerance[i];
+        
+        if ((maxVec[i] + tolerance[i]) > maxValue)
+            maxVec[i] = maxValue;
+        else
+            maxVec[i] += tolerance[i];
     }
 
-    // For each histogram arrays, obtain the maximum (peak) value
-    // Needed to normalize the display later
-    int hmax[3] = {0,0,0};
-    int hgeneralmax = 0;
-    for (int i = 0; i < nc; i++)
-    {
-        for (int j = 0; j < bins-1; j++) {
-            hmax[i] = hist[i].at<int>(j) > hmax[i] ? hist[i].at<int>(j) : hmax[i];
-            hgeneralmax = hist[i].at<int>(j) > hgeneralmax ? hist[i].at<int>(j) : hgeneralmax;
-        }
+
+    // ya tenemos los valores filtrados, guardamos en un archivo:
+    /* OUTPUT FILE */
+    outFile.open("../src/main/data/limits.txt");
+    if (channels == 3) {    //solo nos importa guardar para imagenes de 3 canales
+        outFile << minVec[0] << ' ' << minVec[1] << ' ' << minVec[2] << '\n';
+        outFile << maxVec[0] << ' ' << maxVec[1] << ' ' << maxVec[2] << '\n';
+
+        cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+        cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
     }
-    /*    //adding the following FOR makes the height proportional to the absolute max of all channels 
-    for (int i = 0; i < nc; i++)
+    outFile.close();
+    ////////////////////////////////////////////////////////////
+    
+    if (destinationImage.empty())
+        destinationImage = Mat(transformedImage.rows, transformedImage.cols, CV_8UC1);
+    
+    for (int y = 0; y < sourceImage.rows; ++y) 
     {   
-        hmax[i] = hgeneralmax;
-    }
-    */
-
-    //const char* wname[3] = { "Channel0", "Channel1", "Channel2" };
-    Scalar colors[3] = { Scalar(255,0,0), Scalar(0,255,0), Scalar(0,0,255) };
-
-    vector<Mat> canvas(nc);
-
-    // Display each histogram in a canvas
-    for (int i = 0; i < nc; i++)
-    {
-        canvas[i] = Mat::ones(125, bins, CV_8UC3);
-
-        for (int j = 0, rows = canvas[i].rows; j < bins-1; j++)
+      //  uchar* sourceRowPointer = (uchar*) sourceImage.ptr<uchar>(y);
+        uchar* transformedRowPointer = (uchar*) transformedImage.ptr<uchar>(y);
+        uchar* destinationRowPointer = (uchar*) destinationImage.ptr<uchar>(y);
+        for (int x = 0; x < sourceImage.cols; ++x)
         {
-            line(
-                canvas[i], 
-                Point(j, rows), 
-                Point(j, rows - (hist[i].at<int>(j) * rows/hmax[i])), 
-                nc == 1 ? Scalar(200,200,200) : colors[i], 
-                1, 8, 0
-            );
-        }
-
-        imshow(nc == 1 ? "value" : &wname[i*2], canvas[i]);
-        cvMoveWindow(nc == 1 ? "value" : &wname[i*2], sourceX+650,sourceY+i*155);
-    }
-} //showHistogram
-
-void showHistogram(Mat& img, const char* wname, const int sourceX, const int sourceY, const Vec3b components)
-{
-    int bins = 256;             // number of bins
-    int nc = img.channels();    // number of channels
-
-    vector<Mat> hist(nc);       // histogram arrays
-
-    // Initalize histogram arrays
-    for (unsigned int i = 0; i < hist.size(); i++)
-        hist[i] = Mat::zeros(1, bins, CV_32SC1);
-
-    // Calculate the histogram of the image
-    for (int i = 0; i < img.rows; i++)
-    {
-        for (int j = 0; j < img.cols; j++)
-        {
-            for (int k = 0; k < nc; k++)
+            gray = false;
+            for (int i = 0; i < channels; ++i)
             {
-                uchar val = nc == 1 ? img.at<uchar>(i,j) : img.at<Vec3b>(i,j)[k];
-                hist[k].at<int>(val) += 1;
+                if(transformedRowPointer[x * channels + i] > maxVec[i] || transformedRowPointer[x * channels + i] < minVec[i])
+                {
+                    destinationRowPointer[x] = 0;
+                    gray = true;
+                } else
+                {
+                    if(!gray)
+                        destinationRowPointer[x] = 255;
+                }
             }
         }
     }
-
-    // For each histogram arrays, obtain the maximum (peak) value
-    // Needed to normalize the display later
-    int hmax[3] = {0,0,0};
-    int hgeneralmax = 0;
-    for (int i = 0; i < nc; i++)
-    {
-        for (int j = 0; j < bins-1; j++) {
-            hmax[i] = hist[i].at<int>(j) > hmax[i] ? hist[i].at<int>(j) : hmax[i];
-            hgeneralmax = hist[i].at<int>(j) > hgeneralmax ? hist[i].at<int>(j) : hgeneralmax;
-        }
-    }
-
-    //const char* wname[3] = { "Channel0", "Channel1", "Channel2" };
-    Scalar colors[3] = { Scalar(255,0,0), Scalar(0,255,0), Scalar(0,0,255) };
-
-    vector<Mat> canvas(nc);
-
-    // Display each histogram in a canvas
-    for (int i = 0; i < nc; i++)
-    {
-        canvas[i] = Mat::ones(125, bins, CV_8UC3);
-
-        for (int j = 0, rows = canvas[i].rows; j < bins-1; j++)
-        {
-            line(
-                canvas[i], 
-                Point(j, rows), 
-                Point(j, rows - (hist[i].at<int>(j) * rows/hmax[i])), j == components[i] ? Scalar(255,255,255) : colors[i], 
-                1, 8, 0
-            );
-        }
-
-        imshow(nc == 1 ? "value" : &wname[i*2], canvas[i]);
-        cvMoveWindow(nc == 1 ? "value" : &wname[i*2], sourceX+650,sourceY+i*155);
-    }
-} //showHistogram
-
+} // END generaimagenFiltradaBinaria
+/*************************************************/

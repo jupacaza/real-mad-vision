@@ -134,6 +134,14 @@ assert((start = clock())!=-1);
     double PhisArray[15][2];
     phi1[0] = -1;
 
+    inFile.open("../src/main/data/phi.txt");
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            inFile >> refPhis[i][j];
+        }
+    }
+    inFile.close();
+
     while (key != 27)
 	{
         /* 1 Obtain a new frame from camera web */
@@ -179,15 +187,6 @@ assert((start = clock())!=-1);
             OilDrop(closing, oil);
             imshow("oildrop", oil);
         }
-
-        inFile.open("../src/main/data/phi.txt");
-        for (int i = 0; i < 4; i++) {
-            for (int j = 0; j < 4; j++) {
-                inFile >> refPhis[i][j];
-            }
-        }
-        inFile.close();
-
 
         if (key == 's' && phi1[0] != -1) { //save phi to array
             //only saves the phis of the blue area
