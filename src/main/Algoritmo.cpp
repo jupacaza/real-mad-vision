@@ -45,8 +45,18 @@ unsigned char PARROT = 1;     // TURN PARROT ON (1) or OFF (0)
 CHeli *heli;
 CRawImage *image;
 bool stop = false;
-float pitch, roll, yaw, height;
+
+
+//************Joystick related************//
+
 int hover,joyRoll, joyPitch;
+float verticalSpeed, yaw;
+SDL_Joystick* m_joystick;
+bool useJoystick;
+int joypadVerticalSpeed, joypadYaw;
+bool PLUSjoypadRoll, MINUSjoypadRoll, PLUSjoypadPitch, MINUSjoypadPitch, navigatedWithJoystick, joypadTakeOff, joypadLand, joypadHover, joypadAuto, joypadManual;
+bool automatico=true;  //Variable que habilita el control manual o automatico
+//*************************//
 
 const Vec3b ColorMat[maxColors] = { //BGR
     Vec3b(255, 0, 0 ),      //blue
@@ -122,7 +132,8 @@ int main(int argc, char *argv[]) {
     
 	while (MainFunction != 'q') { // q de quit
         cout << "\033[2J\033[1;1H";     // Clear Console
-        //cvDestroyAllWindows();            // Clear the GUI (close all windows)
+            destroyAllWindows();
+        //cvDestroyAllWindows();            // Clear the GUI (close all windows)  = destroyAllWindows()??
 		cout << "--- Select the function you want to use:\n";
         cout << "\t1. Fly Parrot with saved parameters\n";
         cout << "\t2. Calibrate Filter values (limits)\n";
@@ -180,8 +191,74 @@ int main(int argc, char *argv[]) {
                 
                 phi1[0] = -1;
 
+
+                // *********Initialize joystick*************//
+                SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+                useJoystick = SDL_NumJoysticks() > 0;
+                if (useJoystick)
+                {
+                    SDL_JoystickClose(m_joystick);
+                    m_joystick = SDL_JoystickOpen(0);
+                }
+                // ****************************************//
+
                 while (key != 27)
                 {
+
+
+                    //********************Joystick Events****************//
+                   if (useJoystick)
+                    {
+                        SDL_Event event;
+                        SDL_PollEvent(&event);
+
+
+                        PLUSjoypadRoll = SDL_JoystickGetButton(m_joystick, 1);     //Derecha B
+                        MINUSjoypadRoll = SDL_JoystickGetButton(m_joystick, 0);    //Izquierda A
+                        PLUSjoypadPitch = SDL_JoystickGetButton(m_joystick, 5);    //Delante Z
+                        MINUSjoypadPitch = SDL_JoystickGetButton(m_joystick, 2);   //Atras  C
+                        joypadVerticalSpeed = SDL_JoystickGetAxis(m_joystick, 1);  //UP & DOWN (bajar o subir el parrot)
+                        joypadYaw = SDL_JoystickGetAxis(m_joystick, 0);            //LEFT & RIGHT (yaw) 
+                        joypadTakeOff = SDL_JoystickGetButton(m_joystick, 9);      //Start Takeoff
+                        joypadLand = SDL_JoystickGetButton(m_joystick, 7);         //Gatillo derecho Aterrizaje
+                        joypadHover = SDL_JoystickGetButton(m_joystick, 6);        //Gatillo izquierdo Estabiliza
+                        joypadAuto = SDL_JoystickGetButton(m_joystick, 3);         //X Pasa a automatico 
+                        joypadManual = SDL_JoystickGetButton(m_joystick, 4);       //Y Pasa a Manual
+                    }
+
+                    //Puedes ver el nivel de bateria con la tecla b
+                    if (key=='b')
+                    {
+                    printf("===================== Parrot status =====================\n\n");
+                    fprintf(stdout, "Angles  : %.2lf %.2lf %.2lf \n", helidata.phi, helidata.psi, helidata.theta);
+                    fprintf(stdout, "Speeds  : %.2lf %.2lf %.2lf \n", helidata.vx, helidata.vy, helidata.vz);
+                    fprintf(stdout, "Battery : %.0lf \n", helidata.battery);
+                    }
+                    
+                    //Status del parrot en manual
+                    if (!automatico)
+                    {
+                    // Clear the console
+                    printf("\033[2J\033[1;1H");
+
+                    // prints the drone telemetric data, helidata struct contains drone angles, speeds and battery status
+                    printf("===================== Parrot status =====================\n\n");
+                    fprintf(stdout, "Angles  : %.2lf %.2lf %.2lf \n", helidata.phi, helidata.psi, helidata.theta);
+                    fprintf(stdout, "Speeds  : %.2lf %.2lf %.2lf \n", helidata.vx, helidata.vy, helidata.vz);
+                    fprintf(stdout, "Battery : %.0lf \n", helidata.battery);
+                    fprintf(stdout, "Hover   : %d \n", hover);
+                    fprintf(stdout, "Joypad  : %d \n", useJoystick ? 1 : 0);
+                    fprintf(stdout, "  Roll    : %d \n", joyRoll);
+                    fprintf(stdout, "  Pitch   : %d \n", joyPitch);
+                    fprintf(stdout, "  Yaw     : %.2lf \n", yaw);
+                    fprintf(stdout, "  V.S.    : %.2lf \n", verticalSpeed);
+                    fprintf(stdout, "  TakeOff : %d \n", joypadTakeOff);
+                    fprintf(stdout, "  Land    : %d \n", joypadLand);
+                    fprintf(stdout, "state: %d \n",state);
+                    // *******************************************//
+
+                    }
+
                     //image is captured
                     heli->renewImage(image);
                     // Copy to OpenCV Mat
@@ -213,7 +290,8 @@ int main(int argc, char *argv[]) {
                         OilDrop(closing, oil);
                         imshow("oildrop", oil);
 
-                        /*Debugging*/
+                        //*******************Debugging************//
+                        /*
                         for (int i=0; i < NumberRegions; i++)
                         {
                             for (int j=0; j< 4; j++)
@@ -242,7 +320,8 @@ int main(int argc, char *argv[]) {
                             }
 
                         }
-                        /***********************/
+                        */
+                        //***************************************//
                         
                     }
 
@@ -251,161 +330,223 @@ int main(int argc, char *argv[]) {
                         cout << "No image data.. " << endl;
                     }
 
-                    //--------------Controlar el parrot--------------------------------------------
+                    //********************Puedes despegar con el la tecla 'l'**************//
                     if (key=='l')
                     {
                         heli->takeoff();
                         state=0;
                         begin = true;
-                    }
-                    
-                    //
-                    //cout << state << endl;        
 
+                    }
+
+                    //***Si pasas a automatico puedes recordar el filtro y el estado en el que vas
+                    if (joypadAuto)
+                    {
+                    // Clear the console
+                    printf("\033[2J\033[1;1H");
+                    cout<<"MODO AUTOMATICO"<<endl;
+                        automatico=true;
+                cout<<"State: "<<state<<endl;;
+                cout << "Read file:\n";
+                cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+                cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+                
+                    }
+
+                    if (joypadManual)
+                        automatico=false;
+                    
+                    //************************************
+
+                    if (automatico)
                     switch(state)
                     {
-                    case 0:
+                        case 0:
+                            if (begin)
+                            {
+                                endwait=time(NULL);
+                                endwait = clock()+15*CLOCKS_PER_SEC;
+                                begin = false;
+                            }
+
+                            heli->setAngles(0, 0, 0, -3000, 1);
+
+                            if (clock()>=endwait)
+                            {
+                                state=1;
+                                begin = true;
+                            }
+                            break;
+
+                        case 1:
+                        heli->setAngles(0, 0, 0, 0, 1);
+
+                            for (int i=0; i < NumberRegions; i++)
+                            {
+                                for (int j=0; j< 4; j++)
+                                {
+                                    //cout << phi1[i] << ' ' << phi2[i] << endl;
+                                    if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
+                                    {
+                                        //go(j);
+                                        switch(j)
+                                        {
+                                            case 0:
+                                            move1=DERECHA; //R 10
+                                            break;
+                                            case 1:
+                                            move1=IZQUIERDA; //matraz 20
+                                            break;
+                                            case 2:
+                                            move2=ADELANTE; // Ml 03
+                                            break;
+                                            case 3:
+                                            move2=ATRAS; //J 04
+                                            break;
+                                        }
+                                        cout << move1 << ' '  << move2 << endl;
+                                    }
+                                }
+
+                            }
+
+                            if(move1 != 0 && move2 != 0)
+                                state=2;
+                        break;
+
+                        case 2:
                         if (begin)
                         {
                             endwait=time(NULL);
-                            endwait = clock()+15*CLOCKS_PER_SEC;
+                            endwait = clock()+2*CLOCKS_PER_SEC;
                             begin = false;
                         }
 
-                        heli->setAngles(0, 0, 0, -3000, 1);
+                        if(move1 == DERECHA)
+                            heli->setAngles(0, 5000, 0, 0, 0);
+                        else
+                            heli->setAngles(0, -5000, 0, 0, 0);
+
 
                         if (clock()>=endwait)
                         {
-                            state=1;
+                            state=3;
                             begin = true;
                         }
                         break;
 
-                    case 1:
-                    heli->setAngles(0, 0, 0, 0, 1);
-
-                        for (int i=0; i < NumberRegions; i++)
+                        case 3:
+                        if (begin)
                         {
-                            for (int j=0; j< 4; j++)
-                            {
-                                //cout << phi1[i] << ' ' << phi2[i] << endl;
-                                if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
-                                {
-                                    //go(j);
-                                    switch(j)
-                                    {
-                                        case 0:
-                                        move1=DERECHA; //R 10
-                                        break;
-                                        case 1:
-                                        move1=IZQUIERDA; //matraz 20
-                                        break;
-                                        case 2:
-                                        move2=ADELANTE; // Ml 03
-                                        break;
-                                        case 3:
-                                        move2=ATRAS; //J 04
-                                        break;
-                                    }
-                                    cout << move1 << ' '  << move2 << endl;
-                                }
-                            }
-
+                            endwait=time(NULL);
+                            endwait = clock()+2*CLOCKS_PER_SEC;
+                            begin = false;
                         }
 
-                        if(move1 != 0 && move2 != 0)
-                            state=2;
-                    break;
+                        heli->setAngles(0, 0, 0, 0, 1);
 
-                    case 2:
-                    if (begin)
-                    {
-                        endwait=time(NULL);
-                        endwait = clock()+2*CLOCKS_PER_SEC;
-                        begin = false;
+                        if (clock()>=endwait)
+                        {
+                            state=4;
+                            begin = true;
+                        }
+                        break;
+
+                        case 4:
+                        if (begin)
+                        {
+                            endwait=time(NULL);
+                            endwait = clock()+3*CLOCKS_PER_SEC;
+                            begin = false;
+                        }
+
+                        if(move2 == ADELANTE)
+                            heli->setAngles(-5000, 0, 0, 0, 0);
+                        else
+                            heli->setAngles(5000, 0, 0, 0, 0);
+
+                        if (clock()>=endwait)
+                        {
+                            state=5;
+                            begin = true;
+                        }
+                        break;
+
+                        case 5:
+                        if (begin)
+                        {
+                            endwait=time(NULL);
+                            endwait = clock()+3*CLOCKS_PER_SEC;
+                            begin = false;
+                        }
+
+                        heli->setAngles(0, 0, 0, 1000, 1);
+
+                        if (clock()>=endwait)
+                        {
+                            heli->land();
+                            state=-1;
+                         }
+                        break;
+
+                        default:
+                        heli->setAngles(0, 0, 0, 0, 1);
+                        break;
+                             
                     }
 
-                    if(move1 == DERECHA)
-                        heli->setAngles(0, 5000, 0, 0, 0);
+                        //**************Controlar el parrot manualmente**********//
                     else
-                        heli->setAngles(0, -5000, 0, 0, 0);
-
-
-                    if (clock()>=endwait)
                     {
-                        state=3;
-                        begin = true;
-                    }
-                    break;
+                        //Si despegas manualmente, habilita para que el modo automatico actue desde el estado de busqueda de regiones
+                        if (joypadTakeOff) 
+                        {
+                        heli->takeoff();
+                        state=1;
+                        begin=true;
+                        }
 
-                    case 3:
-                    if (begin)
-                    {
-                        endwait=time(NULL);
-                        endwait = clock()+2*CLOCKS_PER_SEC;
-                        begin = false;
-                    }
+                        hover = joypadHover ? 1 : 0;
+                        //Nota: el 5000 es para que no sea tan brusco el movimiento
+                        joyRoll = PLUSjoypadRoll ? 5000 : (MINUSjoypadRoll ? -5000 : 0);
+                        joyPitch = PLUSjoypadPitch ? -5000 : (MINUSjoypadPitch ? 5000 : 0);
+                        //Nota: Siempre |joypadyaw| y |joypadverticalspeed|= 32767 
+                        if (joypadYaw>0)
+                        yaw = 5000.0;
+                        else if (joypadYaw<0)
+                        yaw=-5000.0;
+                        else
+                        yaw=0;
 
-                    heli->setAngles(0, 0, 0, 0, 1);
+                        if (joypadVerticalSpeed>0)
+                        verticalSpeed = 5000.0;
+                        else if (joypadVerticalSpeed<0)
+                        verticalSpeed=-5000.0;
+                        else
+                        verticalSpeed=0;
 
-                    if (clock()>=endwait)
-                    {
-                        state=4;
-                        begin = true;
-                    }
-                    break;
-
-                    case 4:
-                    if (begin)
-                    {
-                        endwait=time(NULL);
-                        endwait = clock()+3*CLOCKS_PER_SEC;
-                        begin = false;
-                    }
-
-                    if(move2 == ADELANTE)
-                        heli->setAngles(-5000, 0, 0, 0, 0);
-                    else
-                        heli->setAngles(5000, 0, 0, 0, 0);
-
-                    if (clock()>=endwait)
-                    {
-                        state=5;
-                        begin = true;
-                    }
-                    break;
-
-                    case 5:
-                    if (begin)
-                    {
-                        endwait=time(NULL);
-                        endwait = clock()+3*CLOCKS_PER_SEC;
-                        begin = false;
-                    }
-
-                    heli->setAngles(0, 0, 0, 1000, 1);
-
-                    if (clock()>=endwait)
-                    {
-                        heli->land();
-                        //endwait=clock()+5*CLOCKS_PER_SEC;
-                        state=-1;
-                     }
-                    break;
-
-                    default:
-                    heli->setAngles(0, 0, 0, 0, 1);
-                    break;
-                         
-                    }
-                         
                         
-                    /*************************************/
+                        heli->setAngles(
+                                joyPitch, 
+                                joyRoll, 
+                                yaw, 
+                                verticalSpeed, 
+                                hover
+                                );
+                         
+                    }
+                                                
+                    /****************************************/
+                    
+
                     key = waitKey(5);
                 }
 
+                heli->land();  //Aterrizar al dar escape
+                SDL_JoystickClose(m_joystick);
                 delete heli;
                 delete image;
+                destroyAllWindows();
                 break;
 
 
@@ -723,6 +864,7 @@ int main(int argc, char *argv[]) {
         
 		usleep(10000);
 	}
+
 }
 /*************** END OF MAIN *********************/
 
