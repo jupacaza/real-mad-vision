@@ -263,16 +263,13 @@ int main(int argc, char *argv[]) {
                     // Copy to OpenCV Mat
                     rawToMat(currentImage, image);
 
-                    /* test */
-                    move1 = move2 = 0;
-
                     if (currentImage.data) 
                     {
                         /* Show image */
                         imshow("Video", currentImage);
-                        //cvMoveWindow("Video", XVIDEO, YIMAGE);
+                        cvMoveWindow("Video", XVIDEO, YIMAGE);
                         storedImage.release();
-                        points.clear(); //remove all stored points on the vector
+                        //points.clear(); //remove all stored points on the vector
                         storedImage = currentImage.clone();
                         backupImage = currentImage.clone();
                         //namedWindow("Image");
@@ -288,6 +285,7 @@ int main(int argc, char *argv[]) {
                         Mat oil;
                         OilDrop(closing, oil);
                         imshow("oildrop", oil);
+                        cvMoveWindow("oildrop", XIMAGE, YIMAGE);
 
                         //*******************Debugging************//
                         /*
@@ -360,6 +358,10 @@ int main(int argc, char *argv[]) {
                     if (automatico)
                     switch(state)
                     {
+                        case -1:
+                            move1 = move2 = 0;
+                            break;
+
                         case 0:
                             if (begin)
                             {
@@ -375,10 +377,11 @@ int main(int argc, char *argv[]) {
                                 state=1;
                                 begin = true;
                             }
+                            move1 = move2 = 0;
                             break;
 
                         case 1:
-                        heli->setAngles(0, 0, 0, 0, 1);
+                            heli->setAngles(0, 0, 0, 0, 1);
 
                             for (int i=0; i < NumberRegions; i++)
                             {
@@ -391,19 +394,23 @@ int main(int argc, char *argv[]) {
                                         switch(j)
                                         {
                                             case 0:
-                                            move1=DERECHA; //R 10
-                                            break;
+                                                if (move1 == 0)
+                                                    move1=DERECHA; //R 10
+                                                break;
                                             case 1:
-                                            move1=IZQUIERDA; //matraz 20
-                                            break;
+                                                if (move1 == 0)
+                                                    move1=IZQUIERDA; //matraz 20
+                                                break;
                                             case 2:
-                                            move2=ADELANTE; // Ml 03
-                                            break;
+                                                if (move2 == 0)
+                                                    move2=ADELANTE; // Ml 03
+                                                break;
                                             case 3:
-                                            move2=ATRAS; //J 04
-                                            break;
+                                                if (move2 == 0)
+                                                    move2=ATRAS; //J 04
+                                                break;
                                         }
-                                        cout << move1 << ' '  << move2 << endl;
+                                        //cout << move1 << ' '  << move2 << endl;
                                     }
                                 }
 
@@ -411,7 +418,8 @@ int main(int argc, char *argv[]) {
 
                             if(move1 != 0 && move2 != 0)
                                 state=2;
-                        break;
+                            
+                            break;
 
                         case 2:
                         if (begin)
@@ -862,6 +870,7 @@ int main(int argc, char *argv[]) {
         }
         
 		usleep(10000);
+        MainFunction = 'q'; //just quit
 	}
 
 }
