@@ -12,8 +12,8 @@
 #include <queue>
 #include <fstream>
 #include <string>
-//#include <curses.h>
-
+#include <climits>
+#define _USE_MATH_DEFINES
 #define XIMAGE 0
 #define YIMAGE 20
 #define XVIDEO 1250
@@ -38,8 +38,14 @@ Mat storedImage, backupImage;
 Mat filteredImage;
 Mat HSVImage;
 Mat closing;
+Mat mapaOrig;
+Mat mapaEnsanchado;
+
 vector<Point> points;
 Point orig, dest;
+
+Point mapPoints[20];
+int Npoints=0;
 
 unsigned char PARROT = 1;     // TURN PARROT ON (1) or OFF (0)
 CHeli *heli;
@@ -98,15 +104,131 @@ void generaBinariaDeArchivo (const Mat &origin, Mat &destination);
 void generateHSV(const Mat &origin, Mat &destination);
 void graphPhis (double PhisArray[][2], int savedPhis);
 void graphPhis (double, double);
+
 void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param);
+
+
 void generaimagenFiltradaBinaria (const Mat &origin, Mat &destination);
+void Rellenar(Mat &colorDst, Point seed);
+void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center, Point verticesRotated[4]);
+
+int connectedPoint(Point p1, Point p2)
+{
+  
+    bool conecta=true;
+    int ax, ay;
+    ax=p2.x-p1.x;
+    ay=p2.y-p1.y;
+    float dx, dy;
+    dx=ax/20.0;
+    dy=ay/20.0;
+    float x,y;
+    x=p1.x;
+    y=p1.y;
+
+    for (int it=0; (it<20 && conecta); it++ )
+    {
+        x=x+dx;
+        y=y+dy;
+
+        
+        if (mapaEnsanchado.at<Vec3b>(Point((int)x,(int)y))==Vec3b(255,0,0))
+            conecta=false;
+    }
+
+    if(!conecta)
+        return INT_MAX;
+
+    return (int)(sqrt(ax*ax + ay*ay));
+
+} // END connected points
+void mapCallback(int event, int x, int y, int flags, void* param)
+{
+
+    switch (event)
+    {
+        case CV_EVENT_LBUTTONDOWN:
+            if(Npoints < 18)
+            {
+                if (mapaEnsanchado.at<Vec3b>(Point(x,y))!=Vec3b(255,0,0))
+                {
+                    cout << "  Mouse X, Y: " << x << ", " << y << endl;
+                    mapPoints[Npoints]=(Point(x, y));
+                    Npoints++;
+                    circle(mapaEnsanchado,Point(x,y), 3, Scalar(0,255,0),-1);
+                    imshow("Mapa Ensanchado", mapaEnsanchado);
+                }
+                else
+                    cout<< "ERROR ES UN OBSTACULO"<< endl;
+
+            } else 
+                cout << "ERROR LIMITE DE PUNTOS"<<endl;
+            
+
+            break;
+       
+    }
+}// END mapCallback
+
+void dijkstra(int w[20][20], int n/*, int l[20], int t[20]*/)
+{
+    int l[20],  t[20];
+    //int f[20];
+
+    for(int i = 1; i < n; i++)
+    {
+        t[i] = 0;
+        l[i] = w[0][i];
+        //f[i] = l[i];
+    }
+
+    for(int x = 1; x <= n - 1; x++)
+    {
+        int vnear, min = INT_MAX;
+        for(int i = 1; i < n; i++)
+        {
+            if(0 <= l[i]  && l[i] < min)
+            {
+                min = l[i]; //closest distance
+                vnear = i;  //closest node
+            }
+        }
+
+        for(int i = 1; i < n; i++)
+        {
+            if( (l[vnear] + w[vnear][i]) >= 0 &&  (l[vnear] + w[vnear][i]) < l[i] )
+            {
+                l[i] = l[vnear] + w[vnear][i];
+                t[i] = vnear;
+
+                //f[i] = l[i];    //add path from t[vnear] to vnear
+            }
+        }
+
+        l[vnear] = -1;
+    }
+
+    //cout << "distance to " << n << " : " << f[n - 1] << endl;
+    //cout << "path: " << endl;
+
+    int x = n - 1;
+
+    do
+    {
+
+        line(mapaEnsanchado, mapPoints[x], mapPoints[t[x]], Scalar(0,0,255),1,8);
+        x = t[x];
+
+    }while(x != 0);
+
+    imshow("Mapa Ensanchado", mapaEnsanchado);
+}
+
 /*************************************************/
 
 /****************** MAIN *************************/
 int main(int argc, char *argv[]) {
-/*
-	
-*/
+
     // read color limits from file
     inFile.open("../src/main/data/limits.txt");
     inFile >> minVec[0];
@@ -138,6 +260,7 @@ int main(int argc, char *argv[]) {
         cout << "\t2. Calibrate Filter values (limits)\n";
         cout << "\t3. Calibrate Hu Moments (Phi) for flight control (phi, philist)\n";
         cout << "\t4. Graph saved moments in philist\n";
+        cout << "\t5. Show the map\n";
         cout << "Choose and press <ENTER>: ";
 		MainFunction = getchar();
 
@@ -148,8 +271,87 @@ int main(int argc, char *argv[]) {
 
         string address;
 
+        Point center;
+        int angleObstacle;
+        Point vertices[4];
+
+
         switch (MainFunction) {
 
+
+        /*   Ver mapa ensanchado       */
+
+            case '5':
+           
+            mapaOrig = imread("../src/main/espacio.png");   // Read the file
+            mapaEnsanchado=mapaOrig.clone();
+          //Son 746 Renglones X 725 Columnas
+            //Drawing origin
+            circle(mapaEnsanchado,Point(362, 125),10,Scalar(0,255,0),-1);
+            //Drawing target
+            circle(mapaEnsanchado,Point(362, 650),10,Scalar(0,255,0),-1);
+            //Drawing an obstacle
+            center=Point(362, 525);
+            drawRotatedSquare(mapaOrig, mapaEnsanchado, 0 , center, vertices);
+
+            cout<<"Obstacle 1 angle (degree)"<<endl;
+            cin>>angleObstacle;
+
+            center=Point(362, 325);
+            drawRotatedSquare(mapaOrig, mapaEnsanchado, angleObstacle, center, vertices);
+            
+            for (int i=0; i<4;i++)
+            cout<<"vertice ["<<i<<"]= "<< vertices[i].x<<" "<< vertices[i].y<<endl;
+            
+
+            //imshow("Mapa", mapaOrig);
+            
+    
+            namedWindow("Mapa Ensanchado");
+            imshow("Mapa Ensanchado", mapaEnsanchado);
+            mapPoints[0] = Point(362, 125);
+            Npoints=1;
+            setMouseCallback("Mapa Ensanchado", mapCallback);
+
+
+           //Escape Sequence
+            waitKey(0);
+
+            mapPoints[Npoints] = Point(362, 650);
+            Npoints++;
+
+            int ady[20][20];
+
+            for(int i = 0; i < Npoints; i++)
+                ady[i][i] = 0;
+
+            for(int i = 0; i < Npoints; i++)
+            {
+                for(int j = i + 1; j < Npoints; j++)
+                {
+                    ady[i][j] = connectedPoint(mapPoints[i],mapPoints[j]);
+                    ady[j][i] = ady[i][j];
+
+                    if(ady[i][j] != INT_MAX)
+                    {   
+                        line(mapaEnsanchado, mapPoints[i], mapPoints[j], Scalar(0,255,0),1,8);
+                        
+                    }            
+                
+                }
+            }
+            imshow("Mapa Ensanchado", mapaEnsanchado);
+
+            waitKey(0);
+            dijkstra(ady,Npoints);
+
+            waitKey(0);
+            //CleanUp
+            mapaOrig.release();
+            mapaEnsanchado.release();
+            destroyAllWindows();
+
+            break;
 /*****************************************************/
 /*        VUELO DEL PARROT                           */
 /*****************************************************/
@@ -288,8 +490,8 @@ int main(int argc, char *argv[]) {
                         cvMoveWindow("oildrop", XIMAGE, YIMAGE);
 
                         //*******************Debugging************//
-                        /*
-            
+                        
+                            
                             for (int i=0; i < NumberRegions; i++)
                             {
                                 for (int j=0; j< 4; j++)
@@ -375,7 +577,7 @@ int main(int argc, char *argv[]) {
                                 begin = false;
                             }
 
-                            heli->setAngles(0, -500, 0, -5000, 0);
+                            heli->setAngles(0, -300, 0, -5000, 0);
 
                             if (clock()>=endwait)
                             {
@@ -415,7 +617,7 @@ int main(int argc, char *argv[]) {
                                                     move2=ATRAS; //"R" 04
                                                 break;
                                         }
-                                        //cout << move1 << ' '  << move2 << endl;
+                                        cout << move1 << ' '  << move2 << endl;
                                     }
                                 }
 
@@ -423,7 +625,7 @@ int main(int argc, char *argv[]) {
 
                             if(move1 != 0 && move2 != 0)
                             {
-                                state=2;
+                              state=2;
                                 cout<<"move1: "<<move1<<endl;
                                 cout<<"move2: "<<move2<<endl;
                             }
@@ -491,7 +693,7 @@ int main(int argc, char *argv[]) {
                         if (begin)
                         {
                             endwait=time(NULL);
-                            endwait = clock()+3*CLOCKS_PER_SEC;
+                            endwait = clock()+0.5*CLOCKS_PER_SEC;
                             begin = false;
                         }
 
@@ -519,6 +721,9 @@ int main(int argc, char *argv[]) {
                         heli->takeoff();
                         state=1;
                         begin=true;
+                        }
+                        if (joypadLand) {
+                         heli->land();
                         }
 
                         hover = joypadHover ? 1 : 0;
@@ -1080,25 +1285,25 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         phi1[i] = n20[i] + n02[i];
         phi2[i] = pow(n20[i] - n02[i], 2) + 4 * pow(n11[i], 2);
 
-/*
-        cout<<"Region"<< i+1 << "\tValor:"<<endl;
-        
-        cout << "m00" << "\t" << m00[i] << endl;
-        cout << "m10" << "\t" << m10[i] << endl;
-        cout << "m01" << "\t" << m01[i] << endl;
-        cout << "m20" << "\t" << m20[i] << endl;
-        cout << "m02" << "\t" << m02[i] << endl;
-        cout << "m11" << "\t" << m11[i] << endl;
-        cout<< "xtest" << "\t" << xtest[i] << endl;
-        cout<< "ytest" << "\t" << ytest[i] << endl;
-        cout << "u20" << "\t" << u20[i] << endl;
-        cout << "u02" << "\t" << u02[i] << endl;
-        cout << "u11" << "\t" << u11[i] << endl;
-        cout << "angle" << "\t" << angle[i] << endl;
-        cout << "PHI 1" << "\t" << phi1[i] << endl;
-        cout << "PHI 2" << "\t" << phi2[i] << endl;
-        cout << endl;
-*/
+            /*
+                    cout<<"Region"<< i+1 << "\tValor:"<<endl;
+                    
+                    cout << "m00" << "\t" << m00[i] << endl;
+                    cout << "m10" << "\t" << m10[i] << endl;
+                    cout << "m01" << "\t" << m01[i] << endl;
+                    cout << "m20" << "\t" << m20[i] << endl;
+                    cout << "m02" << "\t" << m02[i] << endl;
+                    cout << "m11" << "\t" << m11[i] << endl;
+                    cout<< "xtest" << "\t" << xtest[i] << endl;
+                    cout<< "ytest" << "\t" << ytest[i] << endl;
+                    cout << "u20" << "\t" << u20[i] << endl;
+                    cout << "u02" << "\t" << u02[i] << endl;
+                    cout << "u11" << "\t" << u11[i] << endl;
+                    cout << "angle" << "\t" << angle[i] << endl;
+                    cout << "PHI 1" << "\t" << phi1[i] << endl;
+                    cout << "PHI 2" << "\t" << phi2[i] << endl;
+                    cout << endl;
+            */
         int x0, y0, x1, y1;
         int length = (50 + m00[i] / 500);
 
@@ -1128,6 +1333,143 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         }
 
 } //End OilDrop
+
+
+void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center, Point verticesRotated[4])
+{
+        float angle=(degree*M_PI)/180.0;
+        int r=15; //radio=30cm/2
+        int rRobot=30; //radio del robot
+
+
+            Point vertices[4];
+            vertices[0]=Point(center.x-r,center.y-r);
+            vertices[1]=Point(center.x-r,center.y+r);
+            vertices[2]=Point(center.x+r,center.y+r);
+            vertices[3]=Point(center.x+r,center.y-r);
+            
+            
+            for (int i = 0; i < 4; i++)
+            { 
+            verticesRotated[i]=Point(
+            center.x+ (vertices[i].x-center.x)*cos(angle)-(center.y-vertices[i].y)*sin(angle),
+            center.y-((vertices[i].x-center.x)*sin(angle)+(center.y-vertices[i].y)*cos(angle))
+            );
+            
+           
+            }
+            //fillConvexPoly(Mat& img, const Point* pts, int npts, const Scalar& color, int lineType=8, int shift=0)
+            fillConvexPoly(origin, &verticesRotated[0], 4, Scalar (255, 0, 0));
+            fillConvexPoly(mapaEnsanchado, &verticesRotated[0], 4, Scalar (255, 0, 0));
+
+
+
+            Point derivedVertices[2];
+            //Primera iteracion
+            double ax,ay,nMag,nx,ny;
+      
+            ax=verticesRotated[0].x-verticesRotated[3].x;
+            ay=verticesRotated[0].y-verticesRotated[3].y;
+            nMag=sqrt(pow(ax,2)+pow(ay,2));
+            nx=ay/nMag; //n=(ay,-ax)
+            ny=-1*(ax/nMag);
+            derivedVertices[1]=Point(
+                verticesRotated[3].x-rRobot*nx,
+                verticesRotated[3].y-rRobot*ny
+                );
+            derivedVertices[0]=Point(
+                verticesRotated[0].x-rRobot*nx,
+                verticesRotated[0].y-rRobot*ny
+                );
+
+            line(mapaEnsanchado, derivedVertices[1], derivedVertices[0], Scalar(255,0,0));
+            //Iteraciones posteriores
+            for (int i=0; i<3;i++)
+            {
+                ax=verticesRotated[i+1].x-verticesRotated[i].x;
+                ay=verticesRotated[i+1].y-verticesRotated[i].y;
+                nMag=sqrt(pow(ax,2)+pow(ay,2));
+                nx=ay/nMag; //n=(ay,-ax)
+                ny=-1*(ax/nMag);
+                derivedVertices[1]=Point(
+                    verticesRotated[i].x-rRobot*nx,
+                    verticesRotated[i].y-rRobot*ny
+                    );
+                derivedVertices[0]=Point(
+                    verticesRotated[i+1].x-rRobot*nx,
+                    verticesRotated[i+1].y-rRobot*ny
+                    );
+                line(mapaEnsanchado, derivedVertices[1], derivedVertices[0], Scalar(255,0,0));
+                //Arco
+                ellipse(mapaEnsanchado,
+                    verticesRotated[i],  //Pivote
+                    Size(rRobot,rRobot),
+                    (i*-90)-90-degree, //arco rotado
+                    0,  
+                    -90, 
+                    Scalar(255,0,0));
+            }
+
+                //Arco Final
+                ellipse(mapaEnsanchado,
+                    verticesRotated[3],  //Pivote
+                    Size(rRobot,rRobot),
+                    -degree, //arco rotado
+                    0,  
+                    -90, 
+                    Scalar(255,0,0));
+
+               Rellenar(mapaEnsanchado, verticesRotated[0]);
+
+}
+
+
+void Rellenar(Mat &colorDst, Point seed) {
+    Vec3b k = Vec3b(255, 0, 0);
+            queue<Point> Fifo;
+            Fifo.push(seed);
+
+           colorDst.at<Vec3b>(seed) = k;   // color the seed pixel
+            Point coord;
+            
+            while (!Fifo.empty()) {
+                for (int state = 0; state < 4; state++) {   //check all 4 sides
+                    switch (state) {
+                    case 0: //north
+                        coord.x = Fifo.front().x;
+                        coord.y = Fifo.front().y - 1;
+                        break;
+                    case 1: //west
+                        coord.x = Fifo.front().x - 1;
+                        coord.y = Fifo.front().y;
+                        break;
+                    case 2: //south
+                        coord.x = Fifo.front().x;
+                        coord.y = Fifo.front().y + 1;
+                        break;
+                    case 3: //east
+                        coord.x = Fifo.front().x + 1;
+                        coord.y = Fifo.front().y;
+                        break;
+                    }
+
+                    if (coord.y >= 0 && coord.y < colorDst.rows && coord.x >= 0 && coord.x < colorDst.cols) { //is in range
+                        Vec3b temp = colorDst.at<Vec3b>(coord);
+                        if (temp != k) {                            //AND is not colored with k on the destination yet
+                         //   aux = dst.at<uchar>(coord);
+                            if (colorDst.at<Vec3b>(coord) != k) {        //AND is not 0 in the binary image
+                                colorDst.at<Vec3b>(coord) = k;      //color the destination
+                                Fifo.push(Point(coord));
+
+                            }
+                        }
+                    }
+                }
+
+                Fifo.pop();
+            }
+
+        } //End OilDrop
 
 void generaBinariaDeArchivo (const Mat &sourceImage, Mat &destinationImage) {
     bool gray;
@@ -1257,6 +1599,12 @@ void graphPhis (double phi1, double phi2) {
     cvMoveWindow("Phi Graph", XVIDEO, YIMAGE + 500);
 } // END graphPhis
 
+
+
+
+
+
+
 void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param)
 {
     static bool clicked=false;
@@ -1288,7 +1636,7 @@ void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* p
                     tmpImage=storedImage.clone();
                     dest = Point(x,y);
                     {
-                        rectangle(tmpImage, orig, dest,Scalar( 0, 255, 0));
+                        rectangle(tmpImage, orig, dest,Scalar(0, 255, 0));
                          imshow("Image", tmpImage);
                     }
                 }
