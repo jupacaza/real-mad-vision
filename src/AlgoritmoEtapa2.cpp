@@ -88,21 +88,18 @@ vector<Scalar> vecs;
 vector<Scalar>::iterator it;
 
 int NumberRegions;
-float PPM;
 /*************************************************/
 
 /***************** HEADERS ***********************/
 void rawToMat( Mat &destImage, CRawImage* sourceImage);
 Vec3b getK(int &x);
 void OilDrop(const Mat &dst, Mat &colorDst);
-void OilDrop(const Mat &dst, Mat &colorDst, Point seed);
 void generaBinariaDeArchivo (const Mat &origin, Mat &destination);
 void generateHSV(const Mat &origin, Mat &destination);
 void graphPhis (double PhisArray[][2], int savedPhis);
 void graphPhis (double, double);
 void mouseCoordinatesExampleCallback(int event, int x, int y, int flags, void* param);
 void generaimagenFiltradaBinaria (const Mat &origin, Mat &destination);
-void RoadMap(const Mat &map, vector<Point> vec, Mat &roadMap);
 /*************************************************/
 
 /****************** MAIN *************************/
@@ -141,7 +138,6 @@ int main(int argc, char *argv[]) {
         cout << "\t2. Calibrate Filter values (limits)\n";
         cout << "\t3. Calibrate Hu Moments (Phi) for flight control (phi, philist)\n";
         cout << "\t4. Graph saved moments in philist\n";
-        cout << "\t5. Paths (beta)\n";
         cout << "Choose and press <ENTER>: ";
 		MainFunction = getchar();
 
@@ -151,17 +147,6 @@ int main(int argc, char *argv[]) {
         double PhisArray[15][2];
 
         string address;
-
-        //RoadMap (case 5) variables
-        Mat mapBase, mapExpanded, mapBinary;
-        Mat map;
-        int cols, rows;
-        vector<Point> points;
-        float sideLength;
-        int obstangle[2];
-        RotatedRect rRect;
-        Point2f vertices[4];
-        const int obstradius = 30;    //in cm.
 
         switch (MainFunction) {
 
@@ -338,7 +323,7 @@ int main(int argc, char *argv[]) {
 
                             }
                             
-                        // ***************************************/
+                        //***************************************/
                         
                     }
 
@@ -886,68 +871,7 @@ int main(int argc, char *argv[]) {
 
                 break;
             
-/*****************************************************/
-/*         RoadMap   BETA                            */
-/*****************************************************/
 
-            case '5':
-                mapBase = imread("../src/main/data/ejercicioparrot.png",CV_LOAD_IMAGE_GRAYSCALE);
-                cols = mapBase.cols;
-                rows = mapBase.rows; // area is a square
-
-                // save Pixels Per Meter
-                PPM = cols / 6.0;
-                sideLength = PPM * 0.30;    // 30 cm.
-
-                do {
-                    cout << "type obstacle 1 degrees [0,360): ";
-                    cin >> obstangle[0];
-                }while (obstangle[0] < 0 || obstangle[0] >= 360);
-                do {
-                    cout << "type obstacle 2 degrees [0,360): ";
-                    cin >> obstangle[1];
-                }while (obstangle[1] < 0 || obstangle[1] >= 360);
-
-                //obstacle radius is: obstradius        obstradius*PPM/100 for expansion?
-                
-                //Obstacle expansion process
-                    //obstacle drawing
-                threshold(mapBase, mapBinary, 128, 255, THRESH_BINARY);
-
-                for (int i = 0; i < 2; i++) {
-                    rRect = RotatedRect(Point(cols/2,rows*(i+1)/3), Size(sideLength,sideLength), obstangle[i]);
-                    rRect.points(vertices);
-                    for (int j = 0; j < 4; j++)
-                        line(mapBinary, vertices[j], vertices[(j+1)%4], Scalar(0,0,0), 1);
-                    
-                    Mat temp;
-                    OilDrop(mapBinary, temp, Point(cols/2,rows*(i+1)/3));   //do oildrop at rectangle centers
-                    mapBinary = temp.clone();
-                }
-
-                //RoadMap process
-                //generation of points depending on rows and cols
-                
-                points.push_back(Point(cols/6, rows/6));
-                points.push_back(Point(cols*3/6, rows/6));
-                points.push_back(Point(cols*5/6, rows/6));
-
-                points.push_back(Point(cols/6, rows*3/6));
-                points.push_back(Point(cols*3/6, rows*3/6));
-                points.push_back(Point(cols*5/6, rows*3/6));
-
-                points.push_back(Point(cols/6, rows*5/6));
-                points.push_back(Point(cols*3/6, rows*5/6));
-                points.push_back(Point(cols*5/6, rows*5/6));
-
-                RoadMap(mapBinary, points, map);
-
-                imshow("Roadmap", map);
-
-                while (key != 27) {
-                    key = waitKey(5);
-                }
-                break;
 
             default:
                 break;
@@ -981,18 +905,7 @@ Vec3b getK(int &x) {
     if (x >= maxColors)
         x = 0;
     return vector;
-}   //getK
-
-void RoadMap(const Mat &map, vector<Point> vec, Mat &roadMap) {
-    roadMap = map.clone();
-    vector<Point>::iterator it = vec.begin();
-    while (it != vec.end()) {
-        circle(roadMap, *it, 3, Scalar(0,0,255,0));
-
-        it++;
-    }
-    
-} //RoadMap end
+}
 
 void OilDrop(const Mat &dst, Mat &colorDst) {
     Vec3b k;
@@ -1215,62 +1128,6 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
         }
 
 } //End OilDrop
-
-void OilDrop(const Mat &dst, Mat &colorDst, Point seed) {
-    // OilDrop function modified for given seed, colors 1 area on 1 chance
-
-    uchar k;
-    
-    colorDst=dst.clone();  //Start with the source image
-    
-    for (int nareas = 0; nareas < 1; nareas++) { //max color areas 1
-
-        k = 0;
-        queue<Point> Fifo;
-        Fifo.push(seed);
-
-        colorDst.at<uchar>(seed) = k;   // color the seed pixel
-
-        Point coord;
-        
-        while (!Fifo.empty()) {
-            for (int state = 0; state < 4; state++) {   //check all 4 sides
-                switch (state) {
-                case 0: //north
-                    coord.x = Fifo.front().x;
-                    coord.y = Fifo.front().y - 1;
-                    break;
-                case 1: //west
-                    coord.x = Fifo.front().x - 1;
-                    coord.y = Fifo.front().y;
-                    break;
-                case 2: //south
-                    coord.x = Fifo.front().x;
-                    coord.y = Fifo.front().y + 1;
-                    break;
-                case 3: //east
-                    coord.x = Fifo.front().x + 1;
-                    coord.y = Fifo.front().y;
-                    break;
-                }
-
-                if (coord.y >= 0 && coord.y < dst.rows && coord.x >= 0 && coord.x < dst.cols) { //is in range
-                    uchar temp = colorDst.at<uchar>(coord);
-                    if (temp != k) {                            //AND is not colored with k on the destination yet
-                     //   aux = dst.at<uchar>(coord);
-                        if (dst.at<uchar>(coord) != 0) {        //AND is not 0 in the binary image
-                            colorDst.at<uchar>(coord) = k;      //color the destination
-                            Fifo.push(Point(coord));            //enqueue this point for analysis
-                        }
-                    }
-                }
-            }
-
-            Fifo.pop();
-        }
-    }
-
-} //End OilDrop 2
 
 void generaBinariaDeArchivo (const Mat &sourceImage, Mat &destinationImage) {
     bool gray;
