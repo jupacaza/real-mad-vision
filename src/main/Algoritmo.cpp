@@ -232,7 +232,7 @@ void dijkstra(int w[20][20], int n/*, int l[20], int t[20]*/)
     imshow("Mapa Ensanchado", mapaEnsanchado);
 }
 
-void ParrotFly(Point o, Point d) {
+void FlyParrot(Point o, Point d) {
     cout << "Flew from [" << o.x << "," << o.y << "] to ["
         << d.x << "," << d.y << "]" << endl;
 
@@ -415,7 +415,7 @@ int main(int argc, char *argv[]) {
                 Point pi = *PointIt;
                 PointIt--;
                 Point pf = *PointIt;
-                ParrotFly(pi, pf);
+                FlyParrot(pi, pf);
             }
 
         waitKey(0);
