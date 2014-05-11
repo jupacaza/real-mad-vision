@@ -49,7 +49,7 @@ Point mapPoints[20];
 int Npoints=0;
 char horChoice, verChoice; //horizontal and vertical choices for move
 vector<Point> chosenRoute;
-
+double PPM;  // Pixels Per Meter
 /*************************/
 
 
@@ -57,8 +57,9 @@ unsigned char PARROT = 1;     // TURN PARROT ON (1) or OFF (0)
 CHeli *heli;
 CRawImage *image;
 bool stop = false;
-
-
+int savedPhis, lastSavedPhis;
+double PhisArray[15][2];
+VideoCapture camera;
 //************Joystick related************//
 
 int hover,joyRoll, joyPitch;
@@ -238,6 +239,61 @@ void FlyParrot(Point o, Point d) {
 
 }
 
+void InitParrot() {
+    //establishing connection with the quadcopter
+    heli = new CHeli();
+    //this class holds the image from the drone 
+    image = new CRawImage(320,240);
+    // Destination OpenCV Mat   
+    currentImage = Mat(240, 320, CV_8UC3);
+    // Show it  
+    namedWindow("Video");
+
+    // read color limits from file
+    inFile.open("../src/main/data/limits.txt");
+    inFile >> minVec[0];
+    inFile >> minVec[1];
+    inFile >> minVec[2];
+    inFile >> maxVec[0];
+    inFile >> maxVec[1];
+    inFile >> maxVec[2];
+    inFile.close();
+    cout << "Read:\n";
+    cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+    cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+    // read phi 1 & 2 averages and variations from file
+    inFile.open("../src/main/data/phi.txt"); 
+    for (int i = 0; i < 4; i++) { 
+        for (int j = 0; j < 4; j++) { 
+                inFile >> refPhis[i][j]; 
+            } 
+    } 
+    inFile.close();
+
+    savedPhis = 0;
+    lastSavedPhis = 0;
+
+    phi1[0] = -1;
+
+
+    // *********Initialize joystick*************//
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+    useJoystick = SDL_NumJoysticks() > 0;
+    if (useJoystick)
+    {
+        SDL_JoystickClose(m_joystick);
+        m_joystick = SDL_JoystickOpen(0);
+    }
+    // ****************************************//
+}
+
+void CloseParrot() {
+    heli->land();  //Aterrizar al dar escape
+    SDL_JoystickClose(m_joystick);
+    delete heli;
+    delete image;
+}
+
 /*************************************************/
 
 /****************** MAIN *************************/
@@ -265,23 +321,19 @@ int main(int argc, char *argv[]) {
     inFile.close();
 
   char MainFunction = 0;
+  unsigned char key = 0;
     
-  while (MainFunction != 'q') { // q de quit
+    while (MainFunction != 'q') { // q de quit
         cout << "\033[2J\033[1;1H";     // Clear Console
         //cvDestroyAllWindows();            // Clear the GUI (close all windows) 
-    cout << "--- Select the function you want to use:\n";
+        cout << "--- Select the function you want to use:\n";
         cout << "\t1. Fly Parrot with saved parameters\n";
         cout << "\t2. Calibrate Filter values (limits)\n";
         cout << "\t3. Calibrate Hu Moments (Phi) for flight control (phi, philist)\n";
         cout << "\t4. Graph saved moments in philist\n";
         cout << "\t5. Show the map\n";
         cout << "Choose and press <ENTER>: ";
-    MainFunction = getchar();
-
-        unsigned char key = 0;
-        VideoCapture camera;
-        int savedPhis, lastSavedPhis;
-        double PhisArray[15][2];
+        MainFunction = getchar();
 
         string address;
 
@@ -298,7 +350,7 @@ int main(int argc, char *argv[]) {
 
         /*   Ver mapa ensanchado       */
 
-            case '5':
+        case '5':
            
             mapaOrig = imread("../src/main/espacio.png");   // Read the file
             mapaEnsanchado=mapaOrig.clone();
@@ -307,6 +359,8 @@ int main(int argc, char *argv[]) {
             rows = mapaOrig.rows;
             offset = rows - cols;
             rows = cols;    // to consider a square arena
+
+            PPM = cols / 6.0; //save PPM
 
             //Drawing origin
             POrigin = Point(cols/2, rows/6+offset);
@@ -342,30 +396,226 @@ int main(int argc, char *argv[]) {
             Npoints=1;
             setMouseCallback("Mapa Ensanchado", mapCallback);
 
-        waitKey(0);
+            waitKey(0);
 
             mapPoints[Npoints++] = PTargetDown;
             mapPoints[Npoints++] = PTargetUp;
 
+            InitParrot();
 
-            //Choose sides L | R, U | D
-                //from keyboard     only for tests
-            getchar();
-            do {
-                cout << "Navigate left or right (l/r)? ";
-                horChoice = tolower(getchar());
-            } while (horChoice != 'l' && horChoice != 'r');
-            getchar();
-            do {
-                cout << "Navigate up or down (u/d)? ";
-                verChoice = tolower(getchar());
-            } while (verChoice != 'u' && verChoice != 'd');
+            while (key != 27) {
+                //Choose sides L | R, U | D from keyboard     only for tests
+                /*
+                    getchar();
+                    do {
+                        cout << "Navigate left or right (l/r)? ";
+                        horChoice = tolower(getchar());
+                    } while (horChoice != 'l' && horChoice != 'r');
+                    getchar();
+                    do {
+                        cout << "Navigate up or down (u/d)? ";
+                        verChoice = tolower(getchar());
+                    } while (verChoice != 'u' && verChoice != 'd');
+                */
 
+                //image is captured
+                heli->renewImage(image);
+                // Copy to OpenCV Mat
+                rawToMat(currentImage, image);
 
+                if (currentImage.data) 
+                {
+                    /* Show image */
+                    imshow("Video", currentImage);
+                    cvMoveWindow("Video", XVIDEO, YIMAGE);
+                    storedImage.release();
+                    //points.clear(); //remove all stored points on the vector
+                    storedImage = currentImage.clone();
+                    backupImage = currentImage.clone();
+                    //namedWindow("Image");
+                    //cvMoveWindow("Image", XIMAGE, YIMAGE);
+                    //imshow("Image", storedImage);
 
-                //from segmentation and characterization algorithm: TO INSERT HERE
+                    Mat dilateFilter; //Declarar la variable aqui para que tambien se pueda usar la funcion del enter
+                    generaBinariaDeArchivo(storedImage, filteredImage);
+                    dilate(filteredImage, dilateFilter, Mat (10, 10, CV_8U));
+                    erode(dilateFilter, closing, Mat (10, 10, CV_8U));
+                    //imshow("Image", closing);
 
+                    Mat oil;
+                    OilDrop(closing, oil);
+                    imshow("oildrop", oil);
+                    cvMoveWindow("oildrop", XIMAGE, YIMAGE);
+                    
+                }
 
+                else
+                {
+                    cout << "No image data.. " << endl;
+                }
+
+                //********************Puedes despegar con el la tecla 'l'**************//
+                if (key=='l')
+                {
+                    heli->takeoff();
+                    state=0;
+                    begin = true;
+
+                }
+
+                //***Si pasas a automatico puedes recordar el filtro y el estado en el que vas
+                if (joypadAuto)
+                {
+                // Clear the console
+                printf("\033[2J\033[1;1H");
+                cout<<"MODO AUTOMATICO"<<endl;
+                    automatico=true;
+                cout<<"State: "<<state<<endl;;
+                cout << "Read file:\n";
+                cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+                cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+
+                }
+
+                if (joypadManual)
+                    automatico=false;
+
+                //************************************
+
+                if (automatico) {
+                    switch(state)
+                    {
+                        case -1:
+                            move1 = move2 = 0;
+                            break;
+
+                        case 0:
+                            if (begin)
+                            {
+                                endwait=time(NULL);
+                                endwait = clock()+15*CLOCKS_PER_SEC;
+                                begin = false;
+                            }
+
+                            heli->setAngles(0, -300, 0, -5000, 0);
+
+                            if (clock()>=endwait)
+                            {
+                                state=1;
+                                begin = true;
+                            }
+                            move1 = move2 = 0;
+                            break;
+
+                        case 1:
+                            heli->setAngles(0, 0, 0, 0, 1);
+
+                            for (int i=0; i < NumberRegions; i++)
+                            {
+                                for (int j=0; j< 4; j++)
+                                {
+                                    //cout << phi1[i] << ' ' << phi2[i] << endl;
+                                    if (pow(phi1[i]-refPhis[j][0], 2) + pow(phi2[i]-refPhis[j][1], 2) <= refPhis[j][2] + refPhis[j][3])
+                                    {
+                                        //go(j);
+                                        switch(j)
+                                        {
+                                            case 0:
+                                                if (move1 == 0) {
+                                                    move1=DERECHA; //"V" 01
+                                                    horChoice = 'r';
+                                                }
+                                                break;
+                                            case 1:
+                                                if (move1 == 0) {
+                                                    move1=IZQUIERDA; //"[" 20
+                                                    horChoice = 'l';
+                                                }
+                                                break;
+                                            case 2:
+                                                if (move2 == 0) {
+                                                    move2=ADELANTE; // "I" 03
+                                                    verChoice = 'u';
+                                                }
+                                                break;
+                                            case 3:
+                                                if (move2 == 0) {
+                                                    move2=ATRAS; //"R" 04
+                                                    verChoice = 'd';
+                                                }
+                                                break;
+                                        }
+                                        cout << move1 << ' '  << move2 << endl;
+                                    }
+                                }
+
+                            }
+
+                            if(move1 != 0 && move2 != 0)
+                            {
+                              state=2;
+                                cout<<"move1: "<<move1<<endl;
+                                cout<<"move2: "<<move2<<endl;
+                                key = 27;
+                            }
+                            break;
+
+                        default:
+                        heli->setAngles(0, 0, 0, 0, 1);
+                        break;
+                             
+                    }
+                }
+                    //**************Controlar el parrot manualmente**********//
+                else
+                {
+                    //Si despegas manualmente, habilita para que el modo automatico actue desde el estado de busqueda de regiones
+                    if (joypadTakeOff) 
+                    {
+                    heli->takeoff();
+                    state=1;
+                    begin=true;
+                    }
+                    if (joypadLand) {
+                     heli->land();
+                    }
+
+                    hover = joypadHover ? 1 : 0;
+                    //Nota: el 5000 es para que no sea tan brusco el movimiento
+                    joyRoll = PLUSjoypadRoll ? 5000 : (MINUSjoypadRoll ? -5000 : 0);
+                    joyPitch = PLUSjoypadPitch ? -5000 : (MINUSjoypadPitch ? 5000 : 0);
+                    //Nota: Siempre |joypadyaw| y |joypadverticalspeed|= 32767 
+                    if (joypadYaw>0)
+                    yaw = 5000.0;
+                    else if (joypadYaw<0)
+                    yaw=-5000.0;
+                    else
+                    yaw=0;
+
+                    if (joypadVerticalSpeed>0)
+                    verticalSpeed = 5000.0;
+                    else if (joypadVerticalSpeed<0)
+                    verticalSpeed=-5000.0;
+                    else
+                    verticalSpeed=0;
+
+                    
+                    heli->setAngles(
+                            joyPitch, 
+                            joyRoll, 
+                            yaw, 
+                            verticalSpeed, 
+                            hover
+                            );
+                     
+                }
+                                            
+                /****************************************/
+
+                if (key != 27)
+                    key = waitKey(5);
+
+            }
 
             mapaEnsanchadoBackup = mapaEnsanchado.clone();
             if (horChoice == 'l') { //draw obstacle on the right
@@ -379,7 +629,7 @@ int main(int argc, char *argv[]) {
                 rectangle(mapaEnsanchadoBackup, Point(PTargetUp.x-50,PTargetUp.y-50), Point(PTargetUp.x+50,PTargetUp.y+50),Scalar(255,0,0),CV_FILLED);
             }
 
-            imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
+            //imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
 
             int ady[20][20];    // graph adjacency matrix
 
@@ -404,26 +654,158 @@ int main(int argc, char *argv[]) {
 
             imshow("Mapa Ensanchado", mapaEnsanchado);
 
-        waitKey(0);
-
             dijkstra(ady,Npoints);
 
-        waitKey(0);
-
-            PointIt = chosenRoute.end() - 1;    // last point is the start
+            //go through the chosenRoute points
+            /*PointIt = chosenRoute.end() - 1;
             while (PointIt != chosenRoute.begin()) {
                 Point pi = *PointIt;
                 PointIt--;
                 Point pf = *PointIt;
-                FlyParrot(pi, pf);
+                
+            }*/
+
+
+            // move depending on the route
+            int deltax, deltay, pitch, roll;
+            //values for 3 CLOCKSPERSEC periods
+            double DPM;
+            DPM = 5000/3;
+
+            while (PointIt != chosenRoute.begin() && key != 27) {
+
+                Point pi = *PointIt;
+                Point pf = *(PointIt - 1);
+                deltax = pf.x - pi.x;
+                deltay = pf.y - pi.y;
+                
+                //pixels / pixels per meter * degrees per meter
+                roll = deltax/PPM*DPM;  //if deltax is positive it goes RIGHT
+                pitch = deltay/PPM*DPM; //if deltay is positive it goes DOWN = BACKWARDS
+
+                    //the other option would be to variate the time instead of the degrees
+
+                //***Si pasas a automatico puedes recordar el filtro y el estado en el que vas
+                if (joypadAuto)
+                {
+                    // Clear the console
+                    printf("\033[2J\033[1;1H");
+                    cout<<"MODO AUTOMATICO"<<endl;
+                        automatico=true;
+                    cout<<"State: "<<state<<endl;;
+                    cout << "Read file:\n";
+                    cout << (int)minVec[0] << ' ' << (int)minVec[1] << ' ' << (int)minVec[2] << '\n';
+                    cout << (int)maxVec[0] << ' ' << (int)maxVec[1] << ' ' << (int)maxVec[2] << '\n';
+
+                }
+
+                if (joypadManual)
+                    automatico=false;
+
+                //************************************
+
+                if (automatico) {
+                    switch(state)
+                    {
+                        case 2:
+                            key = 0;
+                            if (begin)
+                            {
+                                endwait=time(NULL);
+                                endwait = clock()+3*CLOCKS_PER_SEC;
+                                begin = false;
+                            }
+
+                            //...(pitch, roll...)
+                            heli->setAngles(pitch, roll, 0, 0, 0);
+
+
+                            if (clock()>=endwait)
+                            {
+                                state = 3;
+                                begin = true;
+                                PointIt--;  //singals end of processing the point
+                            }
+                            break;
+
+                        case 3:
+                            if (begin)
+                            {
+                                endwait=time(NULL);
+                                endwait = clock()+2*CLOCKS_PER_SEC;
+                                begin = false;
+                            }
+
+                            heli->setAngles(0, 0, 0, 0, 1);
+
+                            if (clock()>=endwait)
+                            {
+                                state = 2;
+                                begin = true;
+                                key = 27;   //signals end of processing the movement
+                            }
+                            break;
+
+                        default:
+                            heli->setAngles(0, 0, 0, 0, 1);
+                            break;
+                             
+                    }
+                }
+                    //**************Controlar el parrot manualmente**********//
+                else
+                {
+                    //Si despegas manualmente, habilita para que el modo automatico actue desde el estado de busqueda de regiones
+                    if (joypadTakeOff) 
+                    {
+                    heli->takeoff();
+                    state=2;
+                    begin=true;
+                    }
+                    if (joypadLand) {
+                     heli->land();
+                    }
+
+                    hover = joypadHover ? 1 : 0;
+                    //Nota: el 5000 es para que no sea tan brusco el movimiento
+                    joyRoll = PLUSjoypadRoll ? 5000 : (MINUSjoypadRoll ? -5000 : 0);
+                    joyPitch = PLUSjoypadPitch ? -5000 : (MINUSjoypadPitch ? 5000 : 0);
+                    //Nota: Siempre |joypadyaw| y |joypadverticalspeed|= 32767 
+                    if (joypadYaw>0)
+                    yaw = 5000.0;
+                    else if (joypadYaw<0)
+                    yaw=-5000.0;
+                    else
+                    yaw=0;
+
+                    if (joypadVerticalSpeed>0)
+                    verticalSpeed = 5000.0;
+                    else if (joypadVerticalSpeed<0)
+                    verticalSpeed=-5000.0;
+                    else
+                    verticalSpeed=0;
+
+                    
+                    heli->setAngles(
+                            joyPitch, 
+                            joyRoll, 
+                            yaw, 
+                            verticalSpeed, 
+                            hover
+                            );
+                     
+                }
+                                            
+                /****************************************/
             }
 
-        waitKey(0);
+
+            CloseParrot();
+
             //CleanUp
             mapaOrig.release();
             mapaEnsanchado.release();
             destroyAllWindows();
-
             break;
 /*****************************************************/
 /*        VUELO DEL PARROT                           */
@@ -1039,18 +1421,18 @@ int main(int argc, char *argv[]) {
 
 
                     if (key == '1' && savedPhis > 0) { //save phis to files
-            /*
-                        char option;
-                        cout << "Saving Phi to new file or existing file? (n/e) ";
-                        option = getchar();
+                /*
+                            char option;
+                            cout << "Saving Phi to new file or existing file? (n/e) ";
+                            option = getchar();
 
-                        if (option == 'n') {
-                            outFile.open("../src/main/data/phi.txt");
-                            phiListFile.open("../src/main/data/philist.txt");
-                        } else {
-             */               outFile.open("../src/main/data/phi.txt", ios::app);
-                            phiListFile.open("../src/main/data/philist.txt", ios::app);
-             //           }
+                            if (option == 'n') {
+                                outFile.open("../src/main/data/phi.txt");
+                                phiListFile.open("../src/main/data/philist.txt");
+                            } else {
+                 */               outFile.open("../src/main/data/phi.txt", ios::app);
+                                phiListFile.open("../src/main/data/philist.txt", ios::app);
+                 //           }
 
                         double sum1 = 0, sum2 = 0;
                         double average1 = 0, average2 = 0;
@@ -1151,11 +1533,12 @@ int main(int argc, char *argv[]) {
             
 
 
-            default:
-                break;
+                default:
+                    break;
         }
-        
-    usleep(10000);
+
+
+        usleep(10000);
         MainFunction = 'q'; //just quit
   }
 
