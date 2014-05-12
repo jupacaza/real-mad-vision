@@ -375,10 +375,11 @@ int main(int argc, char *argv[]) {
 
             PPM = cols / 6.0; //save PPM
 
+                //ORIGINAL points
+            
             //Drawing origin
             POrigin = Point(cols/2, rows/8+offset);
             circle(mapaEnsanchado, POrigin, 10, Scalar(0,255,0), -1);
-
 
             //Drawing targets
             PTargetDown = Point(cols/2, rows*5/6+offset);
@@ -386,7 +387,21 @@ int main(int argc, char *argv[]) {
 
             PTargetUp = Point(cols/2, rows/2+offset);
             circle(mapaEnsanchado, PTargetUp, 10, Scalar(0,154,255), -1);
+            
 
+                //Alternate points
+            /*
+            //Drawing origin
+            POrigin = Point(cols/2, rows/2+offset);
+            circle(mapaEnsanchado, POrigin, 10, Scalar(0,255,0), -1);
+
+            //Drawing targets
+            PTargetDown = Point(cols/2, rows*5/6+offset);
+            circle(mapaEnsanchado, PTargetDown, 10, Scalar(0,154,255), -1);
+
+            PTargetUp = Point(cols/2, rows/8+offset);
+            circle(mapaEnsanchado, PTargetUp, 10, Scalar(0,154,255), -1);
+            */
 
             //Robot radius
             do {
@@ -420,7 +435,7 @@ int main(int argc, char *argv[]) {
             Npoints=1;
             getchar();
             namedWindow("Mapa Ensanchado");
-            imshow("Mapa Ensanchado", mapaEnsanchado);
+            
             
 
             cout << "Do you want to use the default points? (y/n) ";
@@ -450,7 +465,7 @@ int main(int argc, char *argv[]) {
                 waitKey(0);
             }
 
-            
+            imshow("Mapa Ensanchado", mapaEnsanchado);
 
             mapPoints[Npoints++] = PTargetDown;
             mapPoints[Npoints++] = PTargetUp;
@@ -694,8 +709,8 @@ int main(int argc, char *argv[]) {
                 rectangle(mapaEnsanchadoBackup, Point(PTargetUp.x-50,PTargetUp.y-50), Point(PTargetUp.x+50,PTargetUp.y+50),Scalar(255,0,0),CV_FILLED);
             }
             */
-            //extra obstacles
-            //rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
+                //extra obstacles
+            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
             rectangle(mapaEnsanchadoBackup, Point(cols/3,rows*2/3-50+offset), Point(cols*2/3,rows*2/3+50+offset),Scalar(255,0,0),CV_FILLED);
 
             //imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
@@ -736,9 +751,9 @@ int main(int argc, char *argv[]) {
 
 
             
-            SPM = 2.2;
+            SPM = 2.3;
 
-            maxAngleRoll = 3700;
+            maxAngleRoll = 3900;
             maxAnglePitch = 3400;
             PointIt = chosenRoute.end() - 1;
             key = 0;
@@ -766,7 +781,7 @@ int main(int argc, char *argv[]) {
                     countClocks -= 0.6;
                 }
                 if (isFirstCase) {
-                    //countClocks -= 0.05;
+                    countClocks -= 0.05;
                     isFirstCase = false;
                 }
 
