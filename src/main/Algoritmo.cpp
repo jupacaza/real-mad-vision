@@ -331,7 +331,8 @@ int main(int argc, char *argv[]) {
         cout << "\t2. Calibrate Filter values (limits)\n";
         cout << "\t3. Calibrate Hu Moments (Phi) for flight control (phi, philist)\n";
         cout << "\t4. Graph saved moments in philist\n";
-        cout << "\t5. Show the map\n";
+        cout << "\t5. Fly Parrot with ROADMAP\n";
+        cout << "\t6. Roadmap demo\n";
         cout << "Choose and press <ENTER>: ";
         MainFunction = getchar();
 
@@ -345,6 +346,17 @@ int main(int argc, char *argv[]) {
         Mat mapaEnsanchadoBackup;
         vector<Point>::iterator PointIt;
         char defaultPoints;
+
+        int ady[20][20];    // graph adjacency matrix
+        // move depending on the route
+        int pitch, roll;
+        //values for 3 CLOCKSPERSEC periods
+        double deltax, deltay;
+        double magnitude, maxAngleRoll, maxAnglePitch, countClocks;
+
+        //double DPM;
+        //DPM = 5000/3;
+        double SPM; // seconds per meter ///////////////*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*//////
 
         switch (MainFunction) {
 
@@ -366,11 +378,15 @@ int main(int argc, char *argv[]) {
             //Drawing origin
             POrigin = Point(cols/2, rows/8+offset);
             circle(mapaEnsanchado, POrigin, 10, Scalar(0,255,0), -1);
+
+
             //Drawing targets
             PTargetDown = Point(cols/2, rows*5/6+offset);
             circle(mapaEnsanchado, PTargetDown, 10, Scalar(0,154,255), -1);
+
             PTargetUp = Point(cols/2, rows/2+offset);
             circle(mapaEnsanchado, PTargetUp, 10, Scalar(0,154,255), -1);
+
 
             //Robot radius
             do {
@@ -403,6 +419,8 @@ int main(int argc, char *argv[]) {
             mapPoints[0] = POrigin;
             Npoints=1;
             getchar();
+            namedWindow("Mapa Ensanchado");
+            imshow("Mapa Ensanchado", mapaEnsanchado);
             
 
             cout << "Do you want to use the default points? (y/n) ";
@@ -432,8 +450,7 @@ int main(int argc, char *argv[]) {
                 waitKey(0);
             }
 
-            namedWindow("Mapa Ensanchado");
-            imshow("Mapa Ensanchado", mapaEnsanchado);
+            
 
             mapPoints[Npoints++] = PTargetDown;
             mapPoints[Npoints++] = PTargetUp;
@@ -539,11 +556,11 @@ int main(int argc, char *argv[]) {
                             if (begin)
                             {
                                 endwait=time(NULL);
-                                endwait = clock()+15*CLOCKS_PER_SEC;
+                                endwait = clock()+10*CLOCKS_PER_SEC;
                                 begin = false;
                             }
 
-                            heli->setAngles(0, -300, 0, -8000, 1);
+                            heli->setAngles(0, -300, 0, -4000, 1);
 
                             if (clock()>=endwait)
                             {
@@ -678,14 +695,12 @@ int main(int argc, char *argv[]) {
             }
             */
             //extra obstacles
-            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
+            //rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
             rectangle(mapaEnsanchadoBackup, Point(cols/3,rows*2/3-50+offset), Point(cols*2/3,rows*2/3+50+offset),Scalar(255,0,0),CV_FILLED);
 
             //imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
             imwrite("../src/main/data/mapaBackup.jpg", mapaEnsanchadoBackup);
             
-
-            int ady[20][20];    // graph adjacency matrix
 
             for(int i = 0; i < Npoints; i++)
                 ady[i][i] = 0;
@@ -720,24 +735,18 @@ int main(int argc, char *argv[]) {
             }*/
 
 
-            // move depending on the route
-            int pitch, roll;
-            //values for 3 CLOCKSPERSEC periods
-            double deltax, deltay;
-            double magnitude, maxAngleRoll, maxAnglePitch, countClocks;
+            
+            SPM = 2.2;
 
-            //double DPM;
-            //DPM = 5000/3;
-            double SPM; // seconds per meter ///////////////*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*//////
-            SPM = 1.6;
-
-            maxAngleRoll = 5700;
-            maxAnglePitch = 5000;
+            maxAngleRoll = 3700;
+            maxAnglePitch = 3400;
             PointIt = chosenRoute.end() - 1;
             key = 0;
             state = 2;
             begin = true;
             automatico = true;
+            bool isFirstCase;
+            isFirstCase = true;
 
             while (PointIt != chosenRoute.begin() || key != 27) {
 
@@ -746,11 +755,6 @@ int main(int argc, char *argv[]) {
                 deltax = pf.x - pi.x;
                 deltay = pf.y - pi.y;
                 
-                //primer metodo
-                //pixels / pixels per meter * degrees per meter
-                //roll = deltax/PPM*DPM;  //if deltax is positive it goes RIGHT
-                //pitch = deltay/PPM*DPM; //if deltay is positive it goes DOWN = BACKWARDS
-
 
                 //second method
                 magnitude = sqrt(deltax*deltax + deltay*deltay);
@@ -758,8 +762,13 @@ int main(int argc, char *argv[]) {
                 pitch = (int)(deltay / magnitude * maxAnglePitch);
 
                 countClocks = magnitude / PPM * SPM;
-
-                    //the other option would be to variate the time instead of the degrees
+                if (countClocks > 8) {
+                    countClocks -= 0.6;
+                }
+                if (isFirstCase) {
+                    //countClocks -= 0.05;
+                    isFirstCase = false;
+                }
 
                 //***Si pasas a automatico puedes recordar el filtro y el estado en el que vas
                 if (joypadAuto)
@@ -888,6 +897,192 @@ int main(int argc, char *argv[]) {
             mapaEnsanchado.release();
             destroyAllWindows();
             break;
+
+
+
+
+
+
+
+        //**********************************************
+        // ROADMAP DEMO
+        //**********************************************
+
+        case '6':
+           
+            mapaOrig = imread("../src/main/espacio.png");   // Read the file
+            mapaEnsanchado=mapaOrig.clone();
+          //Son 746 Renglones X 725 Columnas
+            cols = mapaOrig.cols;
+            rows = mapaOrig.rows;
+            offset = rows - cols;
+            rows = cols;    // to consider a square arena
+
+            PPM = cols / 6.0; //save PPM
+
+            //Drawing origin
+            POrigin = Point(cols/2, rows/8+offset);
+            circle(mapaEnsanchado, POrigin, 10, Scalar(0,255,0), -1);
+
+            //Drawing targets
+            PTargetDown = Point(cols/2, rows*5/6+offset);
+            circle(mapaEnsanchado, PTargetDown, 10, Scalar(0,154,255), -1);
+            PTargetUp = Point(cols/2, rows/2+offset);
+            circle(mapaEnsanchado, PTargetUp, 10, Scalar(0,154,255), -1);
+
+            //Robot radius
+            do {
+                cout << "Robot radius? (in cm.) ";
+                cin >> rRobot;
+            } while (rRobot <= 0);
+
+            rRobot = rRobot * PPM / 100.0;  //change cm. to pixels
+
+            //Drawing obstacle 1
+            cout<<"Obstacle 1 angle (degree): ";
+            cin>>angleObstacle;
+            center=Point(cols/2, rows/3+offset);
+            drawRotatedSquare(mapaOrig, mapaEnsanchado, angleObstacle , center, vertices);
+            for (int i=0; i<4;i++)
+                cout<<"vertice ["<<i<<"]= "<< vertices[i].x<<" "<< vertices[i].y<<endl;
+
+            cout<<"Obstacle 2 angle (degree): ";
+            cin>>angleObstacle;
+            center=Point(cols/2, rows*2/3+offset);
+            drawRotatedSquare(mapaOrig, mapaEnsanchado, angleObstacle, center, vertices);
+            for (int i=0; i<4;i++)
+                cout<<"vertice ["<<i<<"]= "<< vertices[i].x<<" "<< vertices[i].y<<endl;
+            
+
+            imshow("Mapa", mapaOrig);
+            namedWindow("Mapa Ensanchado");
+            imshow("Mapa Ensanchado", mapaEnsanchado);
+
+            mapPoints[0] = POrigin;
+            Npoints=1;
+            
+            setMouseCallback("Mapa Ensanchado", mapCallback);
+            waitKey(0);
+
+            mapPoints[Npoints++] = PTargetDown;
+            mapPoints[Npoints++] = PTargetUp;
+            
+            //Choose sides L | R, U | D from keyboard     only for DEMO
+            getchar();
+            do {
+                cout << "Navigate left or right (l/r)? ";
+                horChoice = tolower(getchar());
+            } while (horChoice != 'l' && horChoice != 'r');
+            getchar();
+            do {
+                cout << "Navigate up or down (u/d)? ";
+                verChoice = tolower(getchar());
+            } while (verChoice != 'u' && verChoice != 'd');
+            
+
+            mapaEnsanchadoBackup = mapaEnsanchado.clone();
+            if (horChoice == 'l') { //draw obstacle on the right
+                rectangle(mapaEnsanchadoBackup, Point(cols/2+50,offset), Point(cols-1,rows-1+offset),Scalar(255,0,0),CV_FILLED);
+            } else {    //was 'r'
+                rectangle(mapaEnsanchadoBackup, Point(cols/2-50,offset), Point(0,rows-1+offset),Scalar(255,0,0),CV_FILLED);
+            }
+            /*
+            if (verChoice == 'u') { //draw obstacle on the lower target
+                rectangle(mapaEnsanchadoBackup, Point(PTargetDown.x-50,PTargetDown.y-50), Point(PTargetDown.x+50,PTargetDown.y+50),Scalar(255,0,0),CV_FILLED);
+            } else {    //was 'd'
+                rectangle(mapaEnsanchadoBackup, Point(PTargetUp.x-50,PTargetUp.y-50), Point(PTargetUp.x+50,PTargetUp.y+50),Scalar(255,0,0),CV_FILLED);
+            }
+            */
+            imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup);
+            waitKey(0);
+
+            //extra obstacles
+            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
+            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows*2/3-50+offset), Point(cols*2/3,rows*2/3+50+offset),Scalar(255,0,0),CV_FILLED);
+
+            imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
+            //imwrite("../src/main/data/mapaBackup.jpg", mapaEnsanchadoBackup);
+            waitKey(0);
+            
+
+            for(int i = 0; i < Npoints; i++)
+                ady[i][i] = 0;
+
+            for(int i = 0; i < Npoints; i++)
+            {
+                for(int j = i + 1; j < Npoints; j++)
+                {
+                    ady[i][j] = connectedPoint(mapPoints[i],mapPoints[j], mapaEnsanchadoBackup);
+                    ady[j][i] = ady[i][j];
+
+                    if(ady[i][j] != INT_MAX)
+                    {   
+                        line(mapaEnsanchado, mapPoints[i], mapPoints[j], Scalar(0,255,0),1,8);
+                        
+                    }            
+                
+                }
+            }
+
+
+            dijkstra(ady,Npoints);
+            imshow("Mapa Ensanchado", mapaEnsanchado);
+
+            waitKey(0);
+            //imwrite("../src/main/data/mapaDeRuta.jpg", mapaEnsanchado);
+                //go through the chosenRoute points
+            /*PointIt = chosenRoute.end() - 1;
+            while (PointIt != chosenRoute.begin()) {
+                Point pi = *PointIt;
+                PointIt--;
+                Point pf = *PointIt;
+                
+            }*/
+
+            SPM = 1.6;
+
+            maxAngleRoll = 5700;
+            maxAnglePitch = 5000;
+            PointIt = chosenRoute.end() - 1;
+            key = 0;
+            state = 2;
+            begin = true;
+            automatico = true;
+
+            while (PointIt != chosenRoute.begin()) {
+
+                Point pi = *PointIt;
+                Point pf = *(PointIt - 1);
+                deltax = pf.x - pi.x;
+                deltay = pf.y - pi.y;
+
+                //calculate the values for roll, pitch and seconds to move
+                magnitude = sqrt(deltax*deltax + deltay*deltay);
+                roll = (int)(deltax / magnitude * maxAngleRoll);
+                pitch = (int)(deltay / magnitude * maxAnglePitch);
+
+                countClocks = magnitude / PPM * SPM;    //magnitude / PixelsPerMeter * SecondsPerMeter
+
+                cout << "Movement:\nX:\tY:\n";
+                cout << countClocks << " sec.\n";
+                cout << "Delta x: " << deltax << '\t' << "Delta y: " << deltay << endl;
+                cout << "Roll: " << roll << '\t' << "Pitch: " << pitch << endl;
+                
+                PointIt--; // next point
+            }
+
+            waitKey(0); //debugging
+
+            //CleanUp
+            mapaOrig.release();
+            mapaEnsanchado.release();
+            destroyAllWindows();
+            break;
+
+
+
+
+
 /*****************************************************/
 /*        VUELO DEL PARROT                           */
 /*****************************************************/
