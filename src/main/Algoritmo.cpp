@@ -50,6 +50,7 @@ int Npoints=0;
 char horChoice, verChoice; //horizontal and vertical choices for move
 vector<Point> chosenRoute;
 double PPM;  // Pixels Per Meter
+int rRobot; //radio del robot
 /*************************/
 
 
@@ -121,15 +122,16 @@ void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center
 
 int connectedPoint(Point p1, Point p2, Mat &mapa)
 {
-    const int divs = 100;   //resolution of the check for obstacle
+    const int divs = 20;   //resolution of the check for obstacle
     bool conecta=true;
-    int ax, ay;
-    ax=p2.x-p1.x;
-    ay=p2.y-p1.y;
-    float dx, dy;
+    int ax, ay, lineLength;
+    ax = p2.x-p1.x;
+    ay = p2.y-p1.y;
+    lineLength = (int)(sqrt(ax*ax + ay*ay));
+    double dx, dy;
     dx=ax/divs;
     dy=ay/divs;
-    float x,y;
+    double x, y;
     x=p1.x;
     y=p1.y;
 
@@ -137,8 +139,6 @@ int connectedPoint(Point p1, Point p2, Mat &mapa)
     {
         x=x+dx;
         y=y+dy;
-
-        
         if (mapa.at<Vec3b>(Point((int)x,(int)y))==Vec3b(255,0,0))
             conecta=false;
     }
@@ -146,7 +146,7 @@ int connectedPoint(Point p1, Point p2, Mat &mapa)
     if(!conecta)
         return INT_MAX;
 
-    return (int)(sqrt(ax*ax + ay*ay));
+    return lineLength;
 
 } // END connected points
 void mapCallback(int event, int x, int y, int flags, void* param)
@@ -344,6 +344,7 @@ int main(int argc, char *argv[]) {
         Point POrigin, PTargetDown, PTargetUp;
         Mat mapaEnsanchadoBackup;
         vector<Point>::iterator PointIt;
+        char defaultPoints;
 
         switch (MainFunction) {
 
@@ -363,13 +364,21 @@ int main(int argc, char *argv[]) {
             PPM = cols / 6.0; //save PPM
 
             //Drawing origin
-            POrigin = Point(cols/2, rows/6+offset);
+            POrigin = Point(cols/2, rows/8+offset);
             circle(mapaEnsanchado, POrigin, 10, Scalar(0,255,0), -1);
             //Drawing targets
             PTargetDown = Point(cols/2, rows*5/6+offset);
             circle(mapaEnsanchado, PTargetDown, 10, Scalar(0,154,255), -1);
             PTargetUp = Point(cols/2, rows/2+offset);
             circle(mapaEnsanchado, PTargetUp, 10, Scalar(0,154,255), -1);
+
+            //Robot radius
+            do {
+                cout << "Robot radius? (in cm.) ";
+                cin >> rRobot;
+            } while (rRobot <= 0);
+
+            rRobot = rRobot * PPM / 100.0;  //change cm. to pixels
 
             //Drawing obstacle 1
             cout<<"Obstacle 1 angle (degree): ";
@@ -390,13 +399,41 @@ int main(int argc, char *argv[]) {
             //imshow("Mapa", mapaOrig);
             
     
-            namedWindow("Mapa Ensanchado");
-            imshow("Mapa Ensanchado", mapaEnsanchado);
+            
             mapPoints[0] = POrigin;
             Npoints=1;
-            setMouseCallback("Mapa Ensanchado", mapCallback);
+            getchar();
+            
 
-            waitKey(0);
+            cout << "Do you want to use the default points? (y/n) ";
+            defaultPoints = getchar();
+            if (tolower(defaultPoints) == 'y') {
+
+                mapPoints[Npoints++] = Point(   cols*1/5,   rows/8+offset);
+                circle(mapaEnsanchado,Point(    cols*1/5,   rows/8+offset), 3, Scalar(0,255,0),-1);
+
+                mapPoints[Npoints++] = Point(   cols*1/5,   rows/2+offset);
+                circle(mapaEnsanchado,Point(    cols*1/5,   rows/2+offset), 3, Scalar(0,255,0),-1);
+
+                mapPoints[Npoints++] = Point(   cols*1/5,   rows*5/6+offset);
+                circle(mapaEnsanchado,Point(    cols*1/5,   rows*5/6+offset), 3, Scalar(0,255,0),-1);
+
+                mapPoints[Npoints++] = Point(   cols*4/5,   rows/8+offset);
+                circle(mapaEnsanchado,Point(    cols*4/5,   rows/8+offset), 3, Scalar(0,255,0),-1);
+
+                mapPoints[Npoints++] = Point(   cols*4/5,   rows/2+offset);
+                circle(mapaEnsanchado,Point(    cols*4/5,   rows/2+offset), 3, Scalar(0,255,0),-1);
+
+                mapPoints[Npoints++] = Point(   cols*4/5,   rows*5/6+offset);
+                circle(mapaEnsanchado,Point(    cols*4/5,   rows*5/6+offset), 3, Scalar(0,255,0),-1);
+
+            } else {
+                setMouseCallback("Mapa Ensanchado", mapCallback);
+                waitKey(0);
+            }
+
+            namedWindow("Mapa Ensanchado");
+            imshow("Mapa Ensanchado", mapaEnsanchado);
 
             mapPoints[Npoints++] = PTargetDown;
             mapPoints[Npoints++] = PTargetUp;
@@ -463,6 +500,15 @@ int main(int argc, char *argv[]) {
 
                 }
 
+                //Puedes ver el nivel de bateria con la tecla b
+                if (key=='b')
+                {
+                printf("===================== Parrot status =====================\n\n");
+                fprintf(stdout, "Angles  : %.2lf %.2lf %.2lf \n", helidata.phi, helidata.psi, helidata.theta);
+                fprintf(stdout, "Speeds  : %.2lf %.2lf %.2lf \n", helidata.vx, helidata.vy, helidata.vz);
+                fprintf(stdout, "Battery : %.0lf \n", helidata.battery);
+                }
+
                 //***Si pasas a automatico puedes recordar el filtro y el estado en el que vas
                 if (joypadAuto)
                 {
@@ -497,7 +543,7 @@ int main(int argc, char *argv[]) {
                                 begin = false;
                             }
 
-                            heli->setAngles(0, -300, 0, -5000, 0);
+                            heli->setAngles(0, -300, 0, -8000, 1);
 
                             if (clock()>=endwait)
                             {
@@ -554,6 +600,7 @@ int main(int argc, char *argv[]) {
                             if(move1 != 0 && move2 != 0)
                             {
                               state=2;
+                              begin = true;
                                 cout<<"move1: "<<move1<<endl;
                                 cout<<"move2: "<<move2<<endl;
                                 key = 27;
@@ -623,13 +670,20 @@ int main(int argc, char *argv[]) {
             } else {    //was 'r'
                 rectangle(mapaEnsanchadoBackup, Point(cols/2-50,offset), Point(0,rows-1+offset),Scalar(255,0,0),CV_FILLED);
             }
+            /*
             if (verChoice == 'u') { //draw obstacle on the lower target
                 rectangle(mapaEnsanchadoBackup, Point(PTargetDown.x-50,PTargetDown.y-50), Point(PTargetDown.x+50,PTargetDown.y+50),Scalar(255,0,0),CV_FILLED);
             } else {    //was 'd'
                 rectangle(mapaEnsanchadoBackup, Point(PTargetUp.x-50,PTargetUp.y-50), Point(PTargetUp.x+50,PTargetUp.y+50),Scalar(255,0,0),CV_FILLED);
             }
+            */
+            //extra obstacles
+            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows/3-50+offset), Point(cols*2/3,rows/3+50+offset),Scalar(255,0,0),CV_FILLED);
+            rectangle(mapaEnsanchadoBackup, Point(cols/3,rows*2/3-50+offset), Point(cols*2/3,rows*2/3+50+offset),Scalar(255,0,0),CV_FILLED);
 
             //imshow("Mapa Ensanchado Backup", mapaEnsanchadoBackup); //debugging
+            imwrite("../src/main/data/mapaBackup.jpg", mapaEnsanchadoBackup);
+            
 
             int ady[20][20];    // graph adjacency matrix
 
@@ -652,11 +706,11 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            imshow("Mapa Ensanchado", mapaEnsanchado);
+            //imshow("Mapa Ensanchado", mapaEnsanchado);
 
             dijkstra(ady,Npoints);
-
-            //go through the chosenRoute points
+            imwrite("../src/main/data/mapaDeRuta.jpg", mapaEnsanchado);
+                //go through the chosenRoute points
             /*PointIt = chosenRoute.end() - 1;
             while (PointIt != chosenRoute.begin()) {
                 Point pi = *PointIt;
@@ -667,21 +721,43 @@ int main(int argc, char *argv[]) {
 
 
             // move depending on the route
-            int deltax, deltay, pitch, roll;
+            int pitch, roll;
             //values for 3 CLOCKSPERSEC periods
-            double DPM;
-            DPM = 5000/3;
+            double deltax, deltay;
+            double magnitude, maxAngleRoll, maxAnglePitch, countClocks;
 
-            while (PointIt != chosenRoute.begin() && key != 27) {
+            //double DPM;
+            //DPM = 5000/3;
+            double SPM; // seconds per meter ///////////////*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*//////
+            SPM = 1.6;
+
+            maxAngleRoll = 5700;
+            maxAnglePitch = 5000;
+            PointIt = chosenRoute.end() - 1;
+            key = 0;
+            state = 2;
+            begin = true;
+            automatico = true;
+
+            while (PointIt != chosenRoute.begin() || key != 27) {
 
                 Point pi = *PointIt;
                 Point pf = *(PointIt - 1);
                 deltax = pf.x - pi.x;
                 deltay = pf.y - pi.y;
                 
+                //primer metodo
                 //pixels / pixels per meter * degrees per meter
-                roll = deltax/PPM*DPM;  //if deltax is positive it goes RIGHT
-                pitch = deltay/PPM*DPM; //if deltay is positive it goes DOWN = BACKWARDS
+                //roll = deltax/PPM*DPM;  //if deltax is positive it goes RIGHT
+                //pitch = deltay/PPM*DPM; //if deltay is positive it goes DOWN = BACKWARDS
+
+
+                //second method
+                magnitude = sqrt(deltax*deltax + deltay*deltay);
+                roll = (int)(deltax / magnitude * maxAngleRoll);
+                pitch = (int)(deltay / magnitude * maxAnglePitch);
+
+                countClocks = magnitude / PPM * SPM;
 
                     //the other option would be to variate the time instead of the degrees
 
@@ -712,8 +788,12 @@ int main(int argc, char *argv[]) {
                             if (begin)
                             {
                                 endwait=time(NULL);
-                                endwait = clock()+3*CLOCKS_PER_SEC;
+                                endwait = clock()+countClocks*CLOCKS_PER_SEC;
                                 begin = false;
+                                cout << "Movement:\nX:\tY:\n";
+                                cout << countClocks << " sec.\n";
+                                cout << deltax << '\t' << deltay << endl;
+                                cout << roll << '\t' << pitch << endl;
                             }
 
                             //...(pitch, roll...)
@@ -732,7 +812,7 @@ int main(int argc, char *argv[]) {
                             if (begin)
                             {
                                 endwait=time(NULL);
-                                endwait = clock()+2*CLOCKS_PER_SEC;
+                                endwait = clock()+3*CLOCKS_PER_SEC;
                                 begin = false;
                             }
 
@@ -799,6 +879,7 @@ int main(int argc, char *argv[]) {
                 /****************************************/
             }
 
+            //waitKey(0); //debugging
 
             CloseParrot();
 
@@ -1794,8 +1875,8 @@ void OilDrop(const Mat &dst, Mat &colorDst) {
 void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center, Point verticesRotated[4])
 {
         float angle=(degree*M_PI)/180.0;
-        int r=15; //radio=30cm/2
-        int rRobot=30; //radio del robot
+        int r= 0.20*PPM; //radio=40cm/2 * PPM
+        
 
 
             Point vertices[4];
@@ -1861,8 +1942,8 @@ void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center
                     verticesRotated[i],  //Pivote
                     Size(rRobot,rRobot),
                     (i*-90)-90-degree, //arco rotado
-                    0,  
-                    -90, 
+                    1,  
+                    -91, 
                     Scalar(255,0,0));
             }
 
@@ -1871,8 +1952,8 @@ void drawRotatedSquare(Mat &origin, Mat &mapaEnsanchado, int degree,Point center
                     verticesRotated[3],  //Pivote
                     Size(rRobot,rRobot),
                     -degree, //arco rotado
-                    0,  
-                    -90, 
+                    1,  
+                    -91, 
                     Scalar(255,0,0));
 
                Rellenar(mapaEnsanchado, verticesRotated[0]);
